@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 import structlog
@@ -8,7 +9,20 @@ import structlog
 from app.core.config import get_settings
 
 
+def _force_utf8_streams() -> None:
+    """Make stdout/stderr accept arbitrary unicode (emoji, Arabic) on Windows."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, ValueError):
+            pass
+
+
 def configure_logging() -> None:
+    _force_utf8_streams()
     settings = get_settings()
 
     level = getattr(logging, settings.log_level)

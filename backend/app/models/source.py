@@ -18,6 +18,7 @@ class Source(SQLModel, table=True):
     rss_url: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     scraping_url: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     is_active: bool = Field(default=True, nullable=False)
+    needs_html_enrichment: bool = Field(default=False, nullable=False)
     last_fetched_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
