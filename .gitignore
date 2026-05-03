@@ -1,0 +1,57 @@
+﻿# Env / secrets
+.env
+.env.*
+!.env.example
+.doppler/
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# IDE / Editors
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Databases (local dev dumps)
+*.sqlite
+*.db
+*.dump
+
+# Docker volumes (si jamais montés en local)
+postgres-data/
+redis-data/
