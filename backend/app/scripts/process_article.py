@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from app.core.db import AsyncSessionLocal, engine
 from app.core.exceptions import AIQualityError
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis_client
+from app.models.article import Article
 from app.models.raw_article import RawArticle
 from app.models.source import Source
 from app.services.ai.claude_client import ClaudeClient
@@ -24,6 +26,9 @@ from app.services.ai.llm_provider import LLMProvider, LLMResponse
 from app.services.ai.localizer import LocalizedArticle, Localizer
 from app.services.ai.openai_client import OpenAIClient
 from app.services.ai.quality_gate import QualityCheckResult, QualityGate
+from app.services.images.image_generator import ImageGenerator, ImageGenerationOutcome
+from app.services.images.replicate_client import ReplicateClient
+from app.services.images.r2_storage import R2Storage
 
 DEFAULT_LOGS_DIR = Path("logs")
 HAIKU = "claude-haiku-4-5"
@@ -131,6 +136,8 @@ def _print_run_report(
     total_duration_ms: int,
     corrections_count: int | str,
     output_path: Path,
+    image_outcome: ImageGenerationOutcome | None = None,
+    persisted_article_id: int | None = None,
 ) -> None:
     bar = "=" * 78
     print(bar)
@@ -138,13 +145,25 @@ def _print_run_report(
     print(bar)
     print(f"writer_model:       {writer_model}")
     print(f"critic_model:       {critic_model or 'n/a'}")
-    print(f"total_cost_usd:     ${total_cost_usd}")
+    if image_outcome is not None:
+        combined_cost = total_cost_usd + image_outcome.cost_usd
+        print(f"localizer_cost:     ${total_cost_usd}")
+        print(f"image_cost:         ${image_outcome.cost_usd}")
+        print(f"total_cost_usd:     ${combined_cost}")
+    else:
+        print(f"total_cost_usd:     ${total_cost_usd}")
     print(f"total_duration_ms:  {total_duration_ms} ms")
     print(f"word_count:         {article.word_count}")
     print(f"corrections_count:  {corrections_count}")
     print(f"quality_gate:       {'passed' if quality.passed else 'FAILED'}")
     print(f"quality_failures:   {quality.failures or 'none'}")
     print(f"quality_warnings:   {quality.warnings or 'none'}")
+    if image_outcome is not None:
+        print(f"image_url:          {image_outcome.public_url}")
+        print(f"image_dimensions:   {image_outcome.width}x{image_outcome.height}")
+        print(f"image_duration_ms:  {image_outcome.duration_ms} ms")
+    if persisted_article_id is not None:
+        print(f"db_article_id:      {persisted_article_id}  (is_published=False)")
     print(f"output:             {output_path.resolve()}")
     print(bar)
 
@@ -166,7 +185,7 @@ async def _load_article(article_id: int) -> tuple[RawArticle, str]:
     return raw, source_name
 
 
-async def main(article_id: int, mode: str, output: Path) -> int:
+async def main(article_id: int, mode: str, output: Path, skip_image: bool = False) -> int:
     configure_logging()
     log = get_logger("scripts.process_article")
     settings = get_settings()
@@ -273,6 +292,33 @@ async def main(article_id: int, mode: str, output: Path) -> int:
             raw_title=raw.original_title,
         )
 
+        # Image generation + DB persistence: production-shape modes only.
+        image_outcome: ImageGenerationOutcome | None = None
+        persisted_id: int | None = None
+        is_production_mode = mode in ("haiku-only", "sonnet-only", "two-pass")
+        if is_production_mode and quality.passed:
+            if not skip_image:
+                try:
+                    image_outcome = await _generate_image(
+                        prompt=final_article.image_prompt,
+                        slug=final_article.slug,
+                        settings=settings,
+                    )
+                except Exception as exc:
+                    log.error(
+                        "process_article.image_failed",
+                        article_id=article_id,
+                        error=str(exc),
+                        error_type=exc.__class__.__name__,
+                    )
+                    print(f"Image generation failed: {exc}", file=sys.stderr)
+                    return 1
+            persisted_id = await _persist_article(
+                raw=raw,
+                final_article=final_article,
+                image_outcome=image_outcome,
+            )
+
         _print_run_report(
             mode=mode,
             article_id=article_id,
@@ -284,12 +330,88 @@ async def main(article_id: int, mode: str, output: Path) -> int:
             total_duration_ms=total_duration_ms,
             corrections_count=corrections_field,
             output_path=output,
+            image_outcome=image_outcome,
+            persisted_article_id=persisted_id,
         )
 
         return 0 if quality.passed else 1
     finally:
         await redis.aclose()
         await engine.dispose()
+
+
+async def _generate_image(
+    *,
+    prompt: str,
+    slug: str,
+    settings,  # type: ignore[no-untyped-def]
+) -> ImageGenerationOutcome:
+    """Build provider/storage from settings and generate+upload one image."""
+    provider = ReplicateClient(api_token=settings.replicate_api_token.get_secret_value())
+    storage = R2Storage(
+        account_id=settings.r2_account_id,
+        access_key_id=settings.r2_access_key_id.get_secret_value(),
+        secret_access_key=settings.r2_secret_access_key.get_secret_value(),
+        bucket_name=settings.r2_bucket_name,
+        endpoint_url=settings.r2_endpoint_url,
+        public_url=settings.r2_public_url,
+    )
+    generator = ImageGenerator(provider=provider, storage=storage)
+    return await generator.generate_and_upload(prompt=prompt, article_slug=slug)
+
+
+async def _persist_article(
+    *,
+    raw: RawArticle,
+    final_article: LocalizedArticle,
+    image_outcome: ImageGenerationOutcome | None,
+) -> int:
+    """Upsert an Article row keyed by raw_article_id. Returns the article id.
+
+    Always saves with ``is_published=False`` — publication is a manual step in
+    the admin panel (ADR-002).
+    """
+    async with AsyncSessionLocal() as session:
+        existing = await session.scalar(
+            select(Article).where(Article.raw_article_id == raw.id)
+        )
+        if existing is None:
+            article = Article(
+                raw_article_id=raw.id,
+                slug=final_article.slug,
+                title_darija=final_article.title_darija,
+                excerpt_darija=final_article.excerpt_darija,
+                content_darija=final_article.content_darija,
+                meta_title=final_article.meta_title,
+                meta_description=final_article.meta_description,
+                hero_image_url=image_outcome.public_url if image_outcome else None,
+                hero_image_alt=final_article.title_darija if image_outcome else None,
+                categories=final_article.categories,
+                tags=final_article.tags,
+                reading_time_minutes=final_article.reading_time_minutes,
+                word_count=final_article.word_count,
+                is_published=False,
+            )
+            session.add(article)
+        else:
+            existing.slug = final_article.slug
+            existing.title_darija = final_article.title_darija
+            existing.excerpt_darija = final_article.excerpt_darija
+            existing.content_darija = final_article.content_darija
+            existing.meta_title = final_article.meta_title
+            existing.meta_description = final_article.meta_description
+            if image_outcome:
+                existing.hero_image_url = image_outcome.public_url
+                existing.hero_image_alt = final_article.title_darija
+            existing.categories = final_article.categories
+            existing.tags = final_article.tags
+            existing.reading_time_minutes = final_article.reading_time_minutes
+            existing.word_count = final_article.word_count
+            existing.updated_at = datetime.now(timezone.utc)
+            article = existing
+        await session.commit()
+        await session.refresh(article)
+        return int(article.id)  # type: ignore[arg-type]
 
 
 async def _run_cross_model(
@@ -524,10 +646,15 @@ def _parse_args() -> argparse.Namespace:
         help="Pipeline mode (default: haiku-only, the production config per ADR-002).",
     )
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--skip-image",
+        action="store_true",
+        help="Skip Replicate image generation and R2 upload (production modes only).",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
     output_path = args.output or DEFAULT_LOGS_DIR / f"localized_{args.article_id}_{args.mode}.md"
-    sys.exit(asyncio.run(main(args.article_id, args.mode, output_path)))
+    sys.exit(asyncio.run(main(args.article_id, args.mode, output_path, args.skip_image)))

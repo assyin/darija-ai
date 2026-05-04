@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,15 +28,16 @@ class Settings(BaseSettings):
     redis_url: RedisDsn
 
     anthropic_api_key: str = Field(..., min_length=10)
-    replicate_api_token: str = Field(..., min_length=10)
+    replicate_api_token: SecretStr
     openai_api_key: str | None = None
 
     localizer_prompt_version: str = "v1"
 
     r2_account_id: str = ""
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
+    r2_access_key_id: SecretStr = SecretStr("")
+    r2_secret_access_key: SecretStr = SecretStr("")
     r2_bucket_name: str = "darija-ai-images"
+    r2_endpoint_url: str = ""
     r2_public_url: str = ""
 
     sentry_dsn: str | None = None
