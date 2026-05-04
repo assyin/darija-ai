@@ -312,11 +312,12 @@ darija-ai/
 | Secrets | Doppler | Free dev tier |
 
 ### AI Providers
-| Service | Use | Model |
-|---|---|---|
-| Anthropic | Localization (PRIMARY) | `claude-sonnet-4-7` |
-| OpenAI | Fallback only | `gpt-4o-mini` |
-| Replicate | Image generation | `black-forest-labs/flux-schnell` |
+| Service | Use | Model | Notes |
+|---|---|---|---|
+| Anthropic | Localization (PRODUCTION) | `claude-haiku-4-5` | Single-pass per ADR-002. Mandatory human review in admin panel. $1 / $5 per 1M tokens. |
+| Anthropic | Opt-in for flagship articles | `claude-sonnet-4-6` | Pass `model="claude-sonnet-4-6"` to Localizer. $3 / $15 per 1M tokens. |
+| OpenAI | Cross-model critic (kept available, not in prod) | `gpt-4o-mini` | $0.15 / $0.60 per 1M tokens. |
+| Replicate | Image generation | `black-forest-labs/flux-schnell` | |
 
 ---
 
@@ -561,7 +562,7 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 ```python
 # ✅ DO: Always set max_tokens, system, structured input
 response = await claude.messages.create(
-    model="claude-sonnet-4-7",
+    model="claude-sonnet-4-6",
     max_tokens=4096,
     system=load_prompt("localizer_v2"),
     messages=[{"role": "user", "content": user_input}],
@@ -962,10 +963,36 @@ AI ecosystem is Python-first. We use Anthropic, Replicate, scraping libs (`feedp
 - REST + OpenAPI codegen gives us type safety with zero overhead.
 - GraphQL pays off with multiple clients and complex relationships — not us.
 
-### Why pin Claude Sonnet 4.7 specifically?
-- Best Arabic/Darija performance among current models (validated).
+### Why Anthropic for localization?
+- Best Arabic/Darija performance among current model families (validated against GPT-4o-mini and against same-family Sonnet critic in cross-model test).
 - Long context handles full source articles + glossary + few-shots in one prompt.
-- Reasonable cost-quality trade-off for production.
+- Production model selection is in ADR-002 below: Haiku 4.5 by default, Sonnet 4.6 opt-in for flagships.
+
+> **Note**: Sonnet 4.7 was mentioned in early planning but was never released by Anthropic. The Sonnet ID currently in production-eligible lists is 4.6.
+
+### ADR-002: Haiku 4.5 single-pass + mandatory human review (2026-05-04)
+
+After A/B/D/E testing on real article #4 (Salesforce Slackbot, ~1000 EN words):
+- Mode A (Haiku-only): $0.041, 1111 words, quality 'good but with translated patterns'
+- Mode B (Sonnet-only): $0.111, 866 words, quality 'excellent, native Moroccan flow'
+- Mode D (Cross-model Haiku→GPT-mini→Haiku): $0.072, 1050 words, comparable to Sonnet, BUT GPT hallucinated reverse-RTL Arabic in `suggested_fix` (e.g. 'يكذ ليكو' instead of 'وكيل ذكي'). Haiku rewriter caught this case, but the risk is non-deterministic at scale.
+- Mode E (OpenAI sanity): mechanical validation only, GPT writes weak Darija (MSA-leaning).
+
+**Decision**: Mode A (Haiku 4.5 single-pass) for production. **All output is reviewed by the project owner — a Moroccan native speaker — in the admin panel before publication.** Articles are created as drafts (`is_published=False`); only the "Publish" button in the admin UI flips them live.
+
+**Rationale**:
+1. **Volume**: 3-4 articles/day. Annual savings vs Sonnet: ~$96/year.
+2. **Human-in-the-loop is the QA layer.** Haiku produces good-but-imperfect Darija (~10-15% rough patches per Mode A test). The owner catches these in review — relying on the model alone is not the design.
+3. **System prompt v1.2** addresses the most common failure modes: anti-translation patterns, English filler list, takeaway specificity.
+4. **Sonnet is opt-in** for flagship pieces by passing `model="claude-sonnet-4-6"` to the Localizer.
+5. **Cross-model code preserved** in `app/services/ai/cross_model_pipeline.py` and `prompts/critic_v1.md` / `prompts/rewriter_v1.md` for re-evaluation when GPT's RTL behavior is fixed.
+
+**Cost estimate**: ~$5/month at 4 articles/day (~$60/year).
+
+**Workflow**:
+RSS scraper → Localizer (Haiku) → Image gen → Article saved as **draft** → Human reviews in admin → "Publish" button → distribution triggered.
+
+**Validation artifacts**: `docs/test-results/2026-05-04-localizer-comparison/`.
 
 ---
 

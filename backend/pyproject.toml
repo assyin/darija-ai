@@ -29,6 +29,7 @@ dependencies = [
     "bleach>=6.2.0",
     "html2text>=2024.2.26",
     "python-multipart>=0.0.18",
+    "openai>=2.33.0",
 ]
 
 [dependency-groups]
