@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "home": "الرئيسية",
+    "articles": "المقالات",
+    "services": "الخدمات",
+    "about": "من نحن",
+    "contact": "تواصل معنا"
+  },
+  "home": {
+    "tagline": "DarijaAI · أول منصة مغربية",
+    "hero_title": "أخبار الذكاء الاصطناعي بالدارجة المغربية",
+    "hero_subtitle": "تكنولوجيا عالمية، مشروحة بطريقة واضحة",
+    "hero_cta_primary": "اقرأ المقالات",
+    "hero_cta_secondary": "اكتشف الخدمات",
+    "featured_title": "مقالات مختارة",
+    "recent_title": "أحدث المقالات",
+    "see_all": "كل المقالات",
+    "newsletter_title": "اشترك في النشرة",
+    "newsletter_subtitle": "أهم أخبار الذكاء الاصطناعي كل أسبوع",
+    "newsletter_placeholder": "بريدك الإلكتروني",
+    "newsletter_cta": "اشتراك",
+    "newsletter_success": "تم بنجاح! سنوافيك بالأخبار.",
+    "newsletter_error": "حدث خطأ، حاول مجددا"
+  },
+  "article": {
+    "reading_time": "{minutes} دقائق قراءة",
+    "published_on": "نُشر في",
+    "share": "مشاركة",
+    "share_whatsapp": "واتساب",
+    "share_twitter": "X",
+    "share_linkedin": "LinkedIn",
+    "copy_link": "نسخ الرابط",
+    "copied": "تم النسخ",
+    "back_to_articles": "→ كل المقالات",
+    "related_articles": "مقالات ذات صلة",
+    "source_credit": "بناء على {source}"
+  },
+  "articles_list": {
+    "page_title": "كل المقالات",
+    "page_subtitle": "أخبار وتحليلات الذكاء الاصطناعي بالدارجة المغربية",
+    "search_placeholder": "بحث...",
+    "filter_all": "الكل",
+    "no_results": "لا توجد مقالات",
+    "previous": "← السابق",
+    "next": "التالي →",
+    "count": "{count} مقالات"
+  },
+  "services": {
+    "page_title": "الخدمات",
+    "page_subtitle": "نساعد الشركات والمهنيين المغاربة في استخدام الذكاء الاصطناعي",
+    "service_1_title": "🌐 موقع ويب + chatbot ذكي",
+    "service_1_desc": "موقع احترافي مع مساعد ذكي لشركتك. تصميم عصري، سريع، متوافق مع الجوال.",
+    "service_2_title": "🤖 أتمتة العمليات",
+    "service_2_desc": "CRM، WhatsApp، البريد الإلكتروني — كل شيء آلي. وفّر ساعات يوميا.",
+    "service_3_title": "📚 تكوين الفرق",
+    "service_3_desc": "ورشات عملية للموظفين. تعلّم الـ prompts والأتمتة و ChatGPT لخدمتك.",
+    "service_4_title": "💡 الاستشارة التقنية",
+    "service_4_desc": "للشركات الصغيرة والمتوسطة المغربية. خطة AI واضحة، بلا تعقيد.",
+    "cta_title": "تريد تطبيق الذكاء الاصطناعي في عملك؟",
+    "cta_subtitle": "احجز مكالمة مجانية ونحدد ما يناسبك",
+    "cta_button": "تواصل الآن"
+  },
+  "about": {
+    "page_title": "من نحن",
+    "intro": "أول منصة مغربية لأخبار الذكاء الاصطناعي بالدارجة",
+    "mission_title": "مهمتنا",
+    "mission_text": "نريد أن نجعل الذكاء الاصطناعي واضحا ومفهوما لكل المغاربة. التكنولوجيا التي تغيّر العالم يجب أن تكون متاحة باللغة التي نتحدث بها.",
+    "why_darija_title": "لماذا الدارجة؟",
+    "why_darija_text": "الدارجة هي اللغة التي نفكر بها ونفهم بها أفضل. الذكاء الاصطناعي ليس حكرا على المتحدثين بالإنجليزية — هو لنا أيضا.",
+    "founder_intro": "تأسست من قبل"
+  },
+  "contact": {
+    "page_title": "تواصل معنا",
+    "page_subtitle": "أي سؤال، أي مشروع، أي تعاون — راسلنا",
+    "form_name": "الاسم",
+    "form_email": "البريد الإلكتروني",
+    "form_message": "الرسالة",
+    "form_submit": "إرسال",
+    "form_success": "وصلتنا الرسالة، سنرد قريبا.",
+    "form_error": "حدث خطأ، حاول مجددا",
+    "or_directly": "أو مباشرة:",
+    "via_whatsapp": "عبر واتساب",
+    "via_email": "عبر البريد",
+    "via_calendly": "احجز مكالمة"
+  },
+  "footer": {
+    "about_title": "من نحن",
+    "about_text": "منصة مغربية لأخبار الذكاء الاصطناعي بالدارجة.",
+    "links_title": "روابط سريعة",
+    "follow_title": "تابعنا",
+    "rights": "© {year} {name}. جميع الحقوق محفوظة.",
+    "made_with": "صُنع بالمغرب 🇲🇦"
+  },
+  "common": {
+    "read_more": "اقرأ المزيد",
+    "loading": "جاري التحميل...",
+    "error": "حدث خطأ"
+  }
+}

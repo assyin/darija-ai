@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "home": "الرئيسية",
+    "articles": "المقالات",
+    "services": "الخدمات",
+    "about": "علينا",
+    "contact": "تواصل معنا"
+  },
+  "home": {
+    "tagline": "DarijaAI · أول منصة مغربية",
+    "hero_title": "أخبار الذكاء الاصطناعي بالدارجة المغربية",
+    "hero_subtitle": "تكنولوجيا عالمية، مشروحة بطريقة كنفهموها",
+    "hero_cta_primary": "اقرا المقالات",
+    "hero_cta_secondary": "اكتشف الخدمات",
+    "featured_title": "مقالات مختارة",
+    "recent_title": "أحدث المقالات",
+    "see_all": "كل المقالات",
+    "newsletter_title": "تابعنا",
+    "newsletter_subtitle": "وصلك أحدث الأخبار ديال AI كل أسبوع",
+    "newsletter_placeholder": "البريد الإلكتروني ديالك",
+    "newsletter_cta": "اشترك",
+    "newsletter_success": "تم! غادي تتوصل بأخبارنا.",
+    "newsletter_error": "وقع خطأ، عاود المحاولة"
+  },
+  "article": {
+    "reading_time": "{minutes} دقائق قراءة",
+    "published_on": "نُشر فـ",
+    "share": "شارك",
+    "share_whatsapp": "WhatsApp",
+    "share_twitter": "X",
+    "share_linkedin": "LinkedIn",
+    "copy_link": "نسخ الرابط",
+    "copied": "تم النسخ",
+    "back_to_articles": "→ كل المقالات",
+    "related_articles": "مقالات ذات صلة",
+    "source_credit": "هاد المقال متعلم على {source}"
+  },
+  "articles_list": {
+    "page_title": "كل المقالات",
+    "page_subtitle": "أخبار وتحليلات AI بالدارجة المغربية",
+    "search_placeholder": "بحث...",
+    "filter_all": "الكل",
+    "no_results": "ما لقينا حتى مقال",
+    "previous": "← السابق",
+    "next": "التالي →",
+    "count": "{count} مقالات"
+  },
+  "services": {
+    "page_title": "الخدمات",
+    "page_subtitle": "كنعاون الشركات والمهنيين المغاربة يستعملو AI",
+    "service_1_title": "🌐 سايت ويب + chatbot AI",
+    "service_1_desc": "سايت احترافي مع chatbot ذكي للشركة ديالك. تصميم عصري، سريع، ومتوافق مع الهاتف.",
+    "service_2_title": "🤖 أتمتة العمليات",
+    "service_2_desc": "CRM، WhatsApp، emails — كلش أوتوماتيك. وفّر ساعات يوميا فالمهام الروتينية.",
+    "service_3_title": "📚 تكوين الفرق على AI",
+    "service_3_desc": "ورشات عملية للموظفين والمهنيين. تعلم prompts، automatisation، ChatGPT للخدمة ديالك.",
+    "service_4_title": "💡 استشارة تقنية",
+    "service_4_desc": "للشركات الصغيرة والمتوسطة المغربية. خطة AI واضحة، بدون كلام تقني معقد.",
+    "cta_title": "بغيتي تطبق AI فالخدمة ديالك؟",
+    "cta_subtitle": "حجز call مجاني وغادي نشوفو شنو يناسبك",
+    "cta_button": "تواصل دابا"
+  },
+  "about": {
+    "page_title": "علينا",
+    "intro": "أول منصة مغربية لأخبار الذكاء الاصطناعي بالدارجة",
+    "mission_title": "المهمة ديالنا",
+    "mission_text": "كنبغيو نخليو AI واضح ومفهوم لكل المغاربة. التكنولوجيا اللي كتغير العالم خاصها تكون متاحة باللغة اللي كنهضرو بها.",
+    "why_darija_title": "علاش بالدارجة؟",
+    "why_darija_text": "الدارجة هي اللغة اللي كنفكرو بها، كنشرحو بها، وكنفهمو بها أحسن. AI ماشي ديال الإنجليز فقط — هو ديالنا حتى احنا.",
+    "founder_intro": "تأسست من طرف"
+  },
+  "contact": {
+    "page_title": "تواصل معنا",
+    "page_subtitle": "أي سؤال، أي مشروع، أي تعاون — بعت لينا رسالة",
+    "form_name": "الاسم",
+    "form_email": "البريد الإلكتروني",
+    "form_message": "الرسالة",
+    "form_submit": "بعت الرسالة",
+    "form_success": "وصلتنا الرسالة، غادي نرجعو ليك بسرعة.",
+    "form_error": "وقع خطأ، عاود المحاولة",
+    "or_directly": "ولا مباشرة:",
+    "via_whatsapp": "عبر WhatsApp",
+    "via_email": "عبر Email",
+    "via_calendly": "حجز call مجاني"
+  },
+  "footer": {
+    "about_title": "علينا",
+    "about_text": "منصة مغربية لأخبار الذكاء الاصطناعي بالدارجة.",
+    "links_title": "روابط سريعة",
+    "follow_title": "تابعنا",
+    "rights": "© {year} {name}. جميع الحقوق محفوظة.",
+    "made_with": "صُنع فالمغرب 🇲🇦"
+  },
+  "common": {
+    "read_more": "اقرا المزيد",
+    "loading": "كيتحمل...",
+    "error": "وقع خطأ"
+  }
+}
