@@ -3,22 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Bot, GraduationCap, LineChart, Workflow } from "lucide-react";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
-import type { ArticlePublic } from "@/lib/types";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-
-async function fetchArticles(limit: number): Promise<ArticlePublic[]> {
-  try {
-    const res = await fetch(`${API_BASE}/articles?limit=${limit}`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return [];
-    return (await res.json()) as ArticlePublic[];
-  } catch {
-    return [];
-  }
-}
+import { publicApi } from "@/lib/api-client";
 
 export default async function HomePage({
   params,
@@ -31,7 +16,7 @@ export default async function HomePage({
   const t = await getTranslations("home");
   const tServices = await getTranslations("services");
 
-  const articles = await fetchArticles(10);
+  const articles = await publicApi.getArticles(10).catch(() => []);
   const featured = articles.slice(0, 3);
   const recent = articles.slice(3);
 

@@ -1,22 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
-import type { ArticlePublic } from "@/lib/types";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-
-async function fetchArticles(): Promise<ArticlePublic[]> {
-  try {
-    const res = await fetch(`${API_BASE}/articles?limit=100`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return [];
-    return (await res.json()) as ArticlePublic[];
-  } catch {
-    return [];
-  }
-}
+import { publicApi } from "@/lib/api-client";
 
 export default async function ArticlesListPage({
   params,
@@ -27,7 +12,7 @@ export default async function ArticlesListPage({
   setRequestLocale(locale);
 
   const t = await getTranslations("articles_list");
-  const articles = await fetchArticles();
+  const articles = await publicApi.getArticles(100).catch(() => []);
 
   return (
     <div className="container-wide py-16">

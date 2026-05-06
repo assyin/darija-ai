@@ -7,38 +7,11 @@ import { Clock } from "lucide-react";
 import { ArticleCTA } from "@/components/public/article-cta";
 import { RtlContent } from "@/components/shared/rtl-content";
 import { bdiHtml, stripBdi } from "@/lib/bidi";
-import type { ArticlePublic, ArticlePublicDetail } from "@/lib/types";
+import { publicApi } from "@/lib/api-client";
+import type { ArticlePublic } from "@/lib/types";
 import { getSiteSettings } from "@/lib/use-site-settings";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
 const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
-async function fetchArticle(slug: string): Promise<ArticlePublicDetail | null> {
-  try {
-    const res = await fetch(`${API_BASE}/articles/${encodeURIComponent(slug)}`, {
-      next: { revalidate: 60 },
-    });
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
-    return (await res.json()) as ArticlePublicDetail;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchRelated(currentSlug: string): Promise<ArticlePublic[]> {
-  try {
-    const res = await fetch(`${API_BASE}/articles?limit=6`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return [];
-    const list = (await res.json()) as ArticlePublic[];
-    return list.filter((a) => a.slug !== currentSlug).slice(0, 3);
-  } catch {
-    return [];
-  }
-}
 
 export async function generateMetadata({
   params,
@@ -46,7 +19,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const article = await fetchArticle(slug);
+  const article = await publicApi.getArticle(slug);
   if (!article) return { title: "Article" };
 
   const url = `${SITE_BASE}/articles/${article.slug}`;
@@ -88,14 +61,17 @@ export default async function ArticlePage({
   setRequestLocale(locale);
 
   const [article, settings] = await Promise.all([
-    fetchArticle(slug),
+    publicApi.getArticle(slug),
     getSiteSettings(),
   ]);
   if (!article) notFound();
 
   const t = await getTranslations("article");
   const tNav = await getTranslations("nav");
-  const related = await fetchRelated(slug);
+  const related = await publicApi
+    .getArticles(6)
+    .then((list) => list.filter((a) => a.slug !== slug).slice(0, 3))
+    .catch(() => [] as ArticlePublic[]);
   const url = `${SITE_BASE}/articles/${article.slug}`;
   const businessName = settings.business_name || "DarijaAI";
 

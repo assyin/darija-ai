@@ -1,5 +1,11 @@
+import type { ArticlePublic, ArticlePublicDetail } from "./types";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+
+const REVALIDATE_ARTICLES = {
+  next: { revalidate: 60 },
+} satisfies RequestInit;
 
 export class ApiError extends Error {
   constructor(
@@ -25,7 +31,6 @@ async function request<T>(
       ...(init?.headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store",
     ...init,
   });
 
@@ -53,4 +58,19 @@ export const api = {
     request<T>("PATCH", path, body, init),
   delete: <T>(path: string, init?: RequestInit) =>
     request<T>("DELETE", path, undefined, init),
+};
+
+export const publicApi = {
+  getArticles: (limit: number): Promise<ArticlePublic[]> => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return api.get<ArticlePublic[]>(`/articles?${params}`, REVALIDATE_ARTICLES);
+  },
+
+  getArticle: (slug: string): Promise<ArticlePublicDetail | null> =>
+    api
+      .get<ArticlePublicDetail>(`/articles/${encodeURIComponent(slug)}`, REVALIDATE_ARTICLES)
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }),
 };
