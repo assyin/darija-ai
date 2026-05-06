@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     admin_jwt_secret: str = Field(default="dev-only-change-me", min_length=10)
     admin_jwt_algorithm: str = "HS256"
     admin_jwt_expiry_seconds: int = 3600
+    auth_login_rate_limit_max_requests: int = 5
+    auth_login_rate_limit_window_seconds: int = 600
 
     @property
     def is_dev(self) -> bool:
