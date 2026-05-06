@@ -11,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
+from app.api.v1.articles import admin_router as articles_admin_router
+from app.api.v1.articles import public_router as articles_public_router
+from app.api.v1.settings import admin_router as settings_admin_router
+from app.api.v1.settings import router as settings_router
 from app.core.config import Settings, get_settings
 from app.core.db import check_db_health
 from app.core.exceptions import AppError
@@ -128,6 +132,11 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
             "docs": "/docs",
         }
+
+    app.include_router(settings_router, prefix="/api/v1")
+    app.include_router(settings_admin_router, prefix="/api/v1")
+    app.include_router(articles_admin_router, prefix="/api/v1")
+    app.include_router(articles_public_router, prefix="/api/v1")
 
     return app
 
