@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(taskkill *)",
+      "Bash(rm -f frontend_dev.log)",
+      "Bash(pnpm dev *)",
+      "PowerShell(Get-Process *)",
+      "Bash(pnpm exec node -e ' *)"
+    ]
+  }
+}
