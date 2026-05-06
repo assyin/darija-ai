@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
 from app.core.db import AsyncSessionLocal
+from app.core.security import create_access_token
 from app.main import create_app
 from app.models.site_setting import SiteSetting
 
 TEST_KEY_PREFIX = "_test_"
+TEST_ADMIN_EMAIL = "test-admin@darija-ai.ma"
+
+
+@pytest.fixture
+def admin_token() -> str:
+    return create_access_token(TEST_ADMIN_EMAIL)
+
+
+@pytest.fixture
+def auth_headers(admin_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {admin_token}"}
 
 
 @pytest_asyncio.fixture

@@ -48,5 +48,14 @@ All admin route handlers use `require_admin` dependency. Zero exceptions.
 
 ## Status
 
-NextAuth magic-link flow is scaffolded in frontend. Backend JWT validation is in `backend/app/core/security.py`.
-Full auth wiring (login → session → protected routes) is pending integration.
+Backend auth is implemented:
+- `backend/app/core/security.py` — `create_access_token()` + `require_admin` FastAPI dependency
+- `backend/app/api/v1/auth.py` — `POST /api/v1/auth/token` (email + password → JWT)
+- All 10 admin routes in `articles.py` and `settings.py` are protected
+- Login validates email + password against `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars (single-owner, no DB user)
+- Token payload: `{ "sub": email, "iat": ..., "exp": ... }` — HS256, 1h expiry
+
+Pending:
+- Frontend login form → `POST /api/v1/auth/token` integration (REFACTOR-02)
+- NextAuth magic-link wiring (deferred — needs Resend API key)
+- Password hashing (explicit MVP deferral — plaintext in env for now)

@@ -53,8 +53,14 @@ async def test_get_public_returns_only_public_settings(
     assert private_key not in body
 
 
+async def test_admin_route_returns_401_without_auth(client: AsyncClient) -> None:
+    resp = await client.get("/api/v1/admin/settings")
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "UNAUTHORIZED"
+
+
 async def test_admin_list_returns_all(
-    client: AsyncClient, db_cleanup: None
+    client: AsyncClient, db_cleanup: None, auth_headers: dict[str, str]
 ) -> None:
     public_key = f"{TEST_KEY_PREFIX}public_x"
     private_key = f"{TEST_KEY_PREFIX}private_x"
@@ -71,7 +77,7 @@ async def test_admin_list_returns_all(
         )
     )
 
-    response = await client.get("/api/v1/admin/settings")
+    response = await client.get("/api/v1/admin/settings", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     keys = {item["key"] for item in body}
@@ -80,7 +86,7 @@ async def test_admin_list_returns_all(
 
 
 async def test_admin_patch_updates_value(
-    client: AsyncClient, db_cleanup: None
+    client: AsyncClient, db_cleanup: None, auth_headers: dict[str, str]
 ) -> None:
     key = f"{TEST_KEY_PREFIX}contact_whatsapp"
     await _insert(
@@ -93,12 +99,13 @@ async def test_admin_patch_updates_value(
     response = await client.patch(
         f"/api/v1/admin/settings/{key}",
         json={"value": "+212 700 111 222"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     assert response.json()["value"] == "+212 700 111 222"
 
     # Re-fetch to confirm persistence
-    refetch = await client.get(f"/api/v1/admin/settings/{key}")
+    refetch = await client.get(f"/api/v1/admin/settings/{key}", headers=auth_headers)
     assert refetch.status_code == 200
     assert refetch.json()["value"] == "+212 700 111 222"
 
@@ -108,11 +115,12 @@ async def test_admin_patch_updates_value(
 
 
 async def test_admin_patch_unknown_key_returns_404(
-    client: AsyncClient, db_cleanup: None
+    client: AsyncClient, db_cleanup: None, auth_headers: dict[str, str]
 ) -> None:
     response = await client.patch(
         f"/api/v1/admin/settings/{TEST_KEY_PREFIX}does_not_exist",
         json={"value": "anything"},
+        headers=auth_headers,
     )
     assert response.status_code == 404
     body = response.json()
@@ -120,7 +128,7 @@ async def test_admin_patch_unknown_key_returns_404(
 
 
 async def test_admin_bulk_update_applies_all(
-    client: AsyncClient, db_cleanup: None
+    client: AsyncClient, db_cleanup: None, auth_headers: dict[str, str]
 ) -> None:
     key_a = f"{TEST_KEY_PREFIX}bulk_a"
     key_b = f"{TEST_KEY_PREFIX}bulk_b"
@@ -145,6 +153,7 @@ async def test_admin_bulk_update_applies_all(
                 {"key": key_b, "value": "b-new"},
             ]
         },
+        headers=auth_headers,
     )
     assert response.status_code == 200
     body = response.json()

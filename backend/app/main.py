@@ -13,6 +13,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from app.api.v1.articles import admin_router as articles_admin_router
 from app.api.v1.articles import public_router as articles_public_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.settings import admin_router as settings_admin_router
 from app.api.v1.settings import router as settings_router
 from app.core.config import Settings, get_settings
@@ -20,6 +21,15 @@ from app.core.db import check_db_health
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import check_redis_health
+
+
+def _check_prod_secrets(settings: Settings) -> None:
+    if not settings.is_prod:
+        return
+    if settings.admin_jwt_secret == "dev-only-change-me":
+        raise RuntimeError("Set ADMIN_JWT_SECRET to a strong random value in production")
+    if settings.admin_password.get_secret_value() == "changeme-in-prod":
+        raise RuntimeError("Set ADMIN_PASSWORD to a strong value in production")
 
 
 def _init_sentry(settings: Settings) -> None:
@@ -40,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging()
     _init_sentry(settings)
+    _check_prod_secrets(settings)
     logger = get_logger("app.lifespan")
     logger.info(
         "app.starting",
@@ -133,6 +144,7 @@ def create_app() -> FastAPI:
             "docs": "/docs",
         }
 
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
     app.include_router(settings_admin_router, prefix="/api/v1")
     app.include_router(articles_admin_router, prefix="/api/v1")

@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.exceptions import NotFoundError
+from app.core.security import require_admin
 from app.models.site_setting import SiteSetting
+from app.schemas.auth import AdminUser
 from app.schemas.site_setting import (
     BulkUpdateRequest,
     SiteSettingAdmin,
@@ -39,6 +41,7 @@ admin_router = APIRouter(prefix="/admin/settings", tags=["admin", "settings"])
 @admin_router.get("", response_model=list[SiteSettingAdmin])
 async def list_all_settings(
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> list[SiteSetting]:
     """All settings (public + private) with metadata. Admin only."""
     result = await session.execute(
@@ -51,6 +54,7 @@ async def list_all_settings(
 async def get_setting(
     key: str,
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> SiteSetting:
     setting = await session.get(SiteSetting, key)
     if setting is None:
@@ -66,6 +70,7 @@ async def update_setting(
     key: str,
     update: SiteSettingUpdate,
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> SiteSetting:
     setting = await session.get(SiteSetting, key)
     if setting is None:
@@ -83,6 +88,7 @@ async def update_setting(
 async def bulk_update_settings(
     payload: BulkUpdateRequest,
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> list[SiteSetting]:
     """Atomic multi-key update. Used by admin "Save all" button.
 

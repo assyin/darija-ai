@@ -82,7 +82,7 @@ no_implicit_optional = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["feedparser", "selectolax.*", "langdetect", "replicate"]
+module = ["feedparser", "selectolax.*", "langdetect", "replicate", "jose"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

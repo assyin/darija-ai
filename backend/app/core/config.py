@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    admin_email: str = Field(default="admin@darija-ai.ma", min_length=5)
+    admin_password: SecretStr = Field(default="changeme-in-prod", min_length=8)
     admin_jwt_secret: str = Field(default="dev-only-change-me", min_length=10)
     admin_jwt_algorithm: str = "HS256"
     admin_jwt_expiry_seconds: int = 3600

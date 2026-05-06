@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.exceptions import ExternalServiceError, NotFoundError
 from app.core.logging import get_logger
+from app.core.security import require_admin
 from app.models.article import Article
 from app.schemas.article import (
     ArticleAdmin,
@@ -19,6 +20,7 @@ from app.schemas.article import (
     ArticlePublicDetail,
     ArticleUpdate,
 )
+from app.schemas.auth import AdminUser
 from app.services.images.image_generator import ImageGenerator
 from app.services.images.r2_storage import R2Storage
 from app.services.images.replicate_client import ReplicateClient
@@ -103,6 +105,7 @@ async def list_articles_admin(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> list[Article]:
     """List articles for the admin panel. Filter by published status, paginate."""
     stmt = select(Article).where(Article.deleted_at.is_(None))
@@ -121,6 +124,7 @@ async def list_articles_admin(
 async def get_article_admin(
     article_id: int,
     session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
 ) -> Article:
     article = await session.get(Article, article_id)
     if article is None or article.deleted_at is not None:
@@ -136,6 +140,7 @@ async def update_article_admin(
     article_id: int,
     update: ArticleUpdate,
     session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
 ) -> Article:
     article = await session.get(Article, article_id)
     if article is None or article.deleted_at is not None:
@@ -167,6 +172,7 @@ async def update_article_admin(
 async def publish_article(
     article_id: int,
     session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
 ) -> Article:
     article = await session.get(Article, article_id)
     if article is None or article.deleted_at is not None:
@@ -183,6 +189,7 @@ async def publish_article(
         "admin.article.published",
         article_id=article.id,
         slug=article.slug,
+        admin_email=user.email,
     )
     return article
 
@@ -191,6 +198,7 @@ async def publish_article(
 async def unpublish_article(
     article_id: int,
     session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
 ) -> Article:
     article = await session.get(Article, article_id)
     if article is None or article.deleted_at is not None:
@@ -207,6 +215,7 @@ async def unpublish_article(
         "admin.article.unpublished",
         article_id=article.id,
         slug=article.slug,
+        admin_email=user.email,
     )
     return article
 
@@ -215,6 +224,7 @@ async def unpublish_article(
 async def regenerate_article_image(
     article_id: int,
     session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
 ) -> Article:
     """Re-call ImageGenerator using the article's current hero_image_alt as prompt
     fallback. (We don't currently persist the original image_prompt, so the alt
@@ -262,5 +272,6 @@ async def regenerate_article_image(
         article_id=article.id,
         public_url=outcome.public_url,
         cost_usd=str(outcome.cost_usd),
+        admin_email=user.email,
     )
     return article
