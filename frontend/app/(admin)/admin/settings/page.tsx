@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import { api } from "@/lib/api-client";
+import { adminApi } from "@/lib/api-client";
 import type { BulkUpdateItem, SettingCategory, SiteSettingAdmin } from "@/lib/types";
 
 const CATEGORY_LABELS: Record<SettingCategory, string> = {
@@ -37,14 +37,14 @@ export default function SettingsPage() {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["admin-settings"],
-    queryFn: () => api.get<SiteSettingAdmin[]>("/admin/settings"),
+    queryFn: () => adminApi.get<SiteSettingAdmin[]>("/settings"),
   });
 
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
 
   const bulkSave = useMutation({
     mutationFn: (updates: BulkUpdateItem[]) =>
-      api.post<SiteSettingAdmin[]>("/admin/settings/bulk", { updates }),
+      adminApi.post<SiteSettingAdmin[]>("/settings/bulk", { updates }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-settings"] });
       setDrafts({});

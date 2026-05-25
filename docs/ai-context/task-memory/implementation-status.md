@@ -33,7 +33,7 @@
 | `core/rate_limit.py` — IP-based rate limiter | ✅ | 5/10min, fail-open — committed `49e7450` |
 | `schemas/auth.py` — AdminUser, LoginRequest, TokenResponse | ✅ | Committed `d247de3` |
 | Config: `admin_email`, `admin_password` (SecretStr) | ✅ | Dev defaults, prod guard in lifespan |
-| Frontend login form → backend token | 🔲 | REFACTOR-02 Phase B |
+| Frontend login form → backend token | ✅ | NextAuth Credentials → `/auth/token`; JWT in httpOnly session (D2) — 2026-05-25 |
 | Password hashing | 🔲 | Explicit MVP deferral |
 
 ### AI Pipeline
@@ -113,12 +113,12 @@
 ### Admin panel
 | Sub-task | Status | Notes |
 |---|---|---|
-| Articles list | 🟡 | Scaffolded, mock data — REFACTOR-02 Phase B |
-| Article editor (markdown) | 🟡 | Scaffolded, 13KB — REFACTOR-02 Phase B |
-| Settings page | 🟡 | Scaffolded, mock data — REFACTOR-02 Phase B |
-| Sources management | 🟡 | Scaffolded — REFACTOR-02 Phase B |
-| Login page → `/api/v1/auth/token` | 🔲 | REFACTOR-02 Phase B (needs token storage) |
-| Real API integration (admin) | 🔲 | REFACTOR-02 Phase B |
+| Articles list | ✅ | Wired via `adminApi` + authed proxy — 2026-05-25 |
+| Article editor (markdown) | ✅ | Wired: view/edit/publish/unpublish/regenerate-image via proxy |
+| Settings page | ✅ | Wired: list + bulk update via proxy |
+| Sources management | 🟡 | Still hardcoded — **no backend `/admin/sources` endpoint exists** (out of P0-B scope) |
+| Login page → `/api/v1/auth/token` | ✅ | NextAuth Credentials, real email+password (D2) |
+| Real API integration (admin) | ✅ | Same-origin proxy `app/api/admin/[...path]` injects Bearer from session |
 
 ---
 

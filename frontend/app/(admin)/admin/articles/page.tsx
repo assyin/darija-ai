@@ -7,7 +7,7 @@ import { ArticleCard } from "@/components/admin/article-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api-client";
+import { adminApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ArticleAdmin } from "@/lib/types";
 
@@ -23,7 +23,7 @@ export default function ArticlesListPage() {
       const params = new URLSearchParams({ limit: "50" });
       if (filter === "drafts") params.set("is_published", "false");
       if (filter === "published") params.set("is_published", "true");
-      return api.get<ArticleAdmin[]>(`/admin/articles?${params}`);
+      return adminApi.get<ArticleAdmin[]>(`/articles?${params}`);
     },
   });
 

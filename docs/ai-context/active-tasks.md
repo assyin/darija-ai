@@ -7,14 +7,21 @@
 
 ## Currently in progress
 
-### P0-B — Admin panel API wiring (REFACTOR-02 Phase B)
-**Goal**: Wire admin login + pages to the real API; enable the human review workflow. Needs D2 (token storage: cookie vs localStorage).
-**Status**: Not started. Blocked on D2 decision.
-**Context files**: `PROD-IMPLEMENTATION-PLAN.md` (P0-B), `task-memory/pending-refactors.md` (REFACTOR-02)
+### Next up: P1-C quick fixes + P0-C CI/CD
+**Goal**: P1-C fast wins (FIX-M1/M2/M3, FIX-S1/S4/S5, password hashing, public rate limit), then P0-C (CI/CD + cloud envs).
+**Status**: Not started.
+**Context files**: `PROD-IMPLEMENTATION-PLAN.md` (P1-C / P0-C), `task-memory/pending-refactors.md`
 
 ---
 
 ## Recently completed
+
+### P0-B — Admin panel API wiring (2026-05-25) · not yet committed
+- **D2 resolved**: NextAuth Credentials → backend `/auth/token`; backend JWT in httpOnly session; same-origin authed proxy `app/api/admin/[...path]` injects Bearer server-side.
+- `lib/auth.ts` (real credentials, dev-bypass removed), `types/next-auth.d.ts`, `login/page.tsx` (email+password form), `lib/api-client.ts` (`adminApi` same-origin client), proxy route handler.
+- Admin pages (articles list, editor, settings) wired via `adminApi`. Fixed a pre-existing setState-in-effect eslint error in the editor.
+- Verified E2E via curl: login→302+httpOnly cookie→proxy returns real data; publish/unpublish work; unauth → 401. tsc + eslint clean.
+- Gap: sources page still hardcoded (no backend `/admin/sources` endpoint).
 
 ### P0-A — Worker + Scheduler (2026-05-25) · not yet committed
 - **D1 resolved**: arq only (queue + native cron), no APScheduler.

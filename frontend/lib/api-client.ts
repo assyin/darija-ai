@@ -22,8 +22,9 @@ async function request<T>(
   path: string,
   body?: unknown,
   init?: RequestInit,
+  base: string = API_BASE,
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const url = path.startsWith("http") ? path : `${base}${path}`;
   const res = await fetch(url, {
     method,
     headers: {
@@ -58,6 +59,22 @@ export const api = {
     request<T>("PATCH", path, body, init),
   delete: <T>(path: string, init?: RequestInit) =>
     request<T>("DELETE", path, undefined, init),
+};
+
+// Admin client — calls the same-origin authed proxy at /api/admin/*, which
+// injects the backend JWT from the httpOnly NextAuth session server-side.
+// The browser never sees the token; the session cookie rides along automatically.
+const ADMIN_BASE = "/api/admin";
+
+export const adminApi = {
+  get: <T>(path: string, init?: RequestInit) =>
+    request<T>("GET", path, undefined, init, ADMIN_BASE),
+  post: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    request<T>("POST", path, body, init, ADMIN_BASE),
+  patch: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    request<T>("PATCH", path, body, init, ADMIN_BASE),
+  delete: <T>(path: string, init?: RequestInit) =>
+    request<T>("DELETE", path, undefined, init, ADMIN_BASE),
 };
 
 export const publicApi = {

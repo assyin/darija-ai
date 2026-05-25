@@ -8,6 +8,12 @@
 
 ## Active decisions (implement or validate these)
 
+### [2026-05-25] D2 — Admin token storage = NextAuth httpOnly session carrying backend JWT
+**Decision**: Login uses the existing NextAuth Credentials provider, which calls backend `POST /auth/token` in `authorize()`; the backend JWT is stored in the NextAuth jwt/session (httpOnly cookie). Admin pages call a same-origin authed proxy (`app/api/admin/[...path]/route.ts`) that injects `Authorization: Bearer` server-side. Browser never sees the token.
+**Why**: Reuses existing NextAuth + middleware infra; httpOnly resists XSS; keeps rich client UX (react-query) without rewriting to RSC. Cookie vs localStorage resolved in favour of the httpOnly cookie NextAuth already manages.
+**Status**: Implemented (P0-B). Verified E2E via curl: login→302+httpOnly cookie→proxy returns real backend data; publish/unpublish mutations work; unauth call → 401.
+**Follow-up**: dev-bypass provider removed. Resend magic link still future.
+
 ### [2026-05-25] D1 — Worker = arq only (no APScheduler)
 **Decision**: Use arq for both the job queue and the periodic scheduler via its native `cron_jobs`. No APScheduler dependency added.
 **Why**: arq is already installed; its `cron()` covers periodic triggers (fetch/30min, process/10min, retry/hourly), so a second scheduler would be a redundant dependency (violates "no new dep" rule).
@@ -50,7 +56,6 @@
 |---|---|---|
 | Distribution order: LinkedIn first, Meta, or newsletter? | Distribution not yet built | MEDIUM |
 | Staging env: Railway preview or manual? | No staging yet | MEDIUM |
-| Token storage in frontend: cookie vs localStorage | Needed for REFACTOR-02 Phase B admin login | MEDIUM |
 
 ---
 

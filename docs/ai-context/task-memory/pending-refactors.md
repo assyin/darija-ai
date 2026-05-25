@@ -34,13 +34,8 @@
 ### [REFACTOR-01] ✅ RESOLVED (2026-05-25) — `process_article.py` → worker jobs
 **Done**: Per-article pipeline extracted into `app/services/pipeline/article_processor.py` (testable, manages `processing_status`). arq jobs in `app/workers/jobs/` + `WorkerSettings` cron scheduler (D1: arq-only). `process_article.py` kept as manual one-shot wrapper. 5 integration tests passing.
 
-### [REFACTOR-02] Phase B — Admin panel API wiring
-**Files**: `frontend/app/(admin)/admin/*.tsx`
-**Problem**: Admin pages (articles list, article editor, settings, sources) use mock data. Login page not wired to `/api/v1/auth/token`.
-**What it needs**: Wire admin pages with `Authorization: Bearer` token from login flow. Decide token storage (cookie vs localStorage).
-**Blocked by**: Token storage decision (cookie vs localStorage) — see `recent-decisions.md`.
-**Phase A**: ✅ Complete — committed `86418b1`.
-**Effort**: ~1 session.
+### [REFACTOR-02] ✅ RESOLVED (2026-05-25) — Admin panel API wiring
+**Phase A** (public): committed `86418b1`. **Phase B** (admin): done — D2 = NextAuth httpOnly session carrying backend JWT + same-origin authed proxy (`app/api/admin/[...path]/route.ts`). Articles list/editor/settings wired via `adminApi`; login uses real credentials. Verified E2E (curl). **Remaining**: sources page still hardcoded — needs a new backend `/admin/sources` endpoint (separate task).
 
 ---
 

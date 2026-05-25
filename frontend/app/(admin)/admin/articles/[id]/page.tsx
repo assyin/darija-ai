@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import { api, ApiError } from "@/lib/api-client";
+import { adminApi, ApiError } from "@/lib/api-client";
 import type { ArticleAdminDetail, ArticleUpdate } from "@/lib/types";
 
 export default function ArticleEditorPage() {
@@ -40,7 +40,7 @@ export default function ArticleEditorPage() {
 
   const { data: article, isLoading, isError, error } = useQuery({
     queryKey: ["article", id],
-    queryFn: () => api.get<ArticleAdminDetail>(`/admin/articles/${id}`),
+    queryFn: () => adminApi.get<ArticleAdminDetail>(`/articles/${id}`),
     enabled: Number.isFinite(id),
   });
 
@@ -48,10 +48,13 @@ export default function ArticleEditorPage() {
   const [showPublish, setShowPublish] = React.useState(false);
   const [showUnpublish, setShowUnpublish] = React.useState(false);
 
-  // Reset draft when a fresh article loads.
-  React.useEffect(() => {
+  // Reset the edit draft when a different article loads. Render-time reset —
+  // the React-recommended alternative to calling setState inside an effect.
+  const [trackedId, setTrackedId] = React.useState(article?.id);
+  if (article && article.id !== trackedId) {
+    setTrackedId(article.id);
     setDraft({});
-  }, [article?.id]);
+  }
 
   const merged: ArticleAdminDetail | undefined = article
     ? { ...article, ...draft } as ArticleAdminDetail
@@ -59,7 +62,7 @@ export default function ArticleEditorPage() {
 
   const saveMutation = useMutation({
     mutationFn: (patch: ArticleUpdate) =>
-      api.patch<ArticleAdminDetail>(`/admin/articles/${id}`, patch),
+      adminApi.patch<ArticleAdminDetail>(`/articles/${id}`, patch),
     onSuccess: (next) => {
       qc.setQueryData(["article", id], next);
       qc.invalidateQueries({ queryKey: ["articles"] });
@@ -70,7 +73,7 @@ export default function ArticleEditorPage() {
   });
 
   const publishMutation = useMutation({
-    mutationFn: () => api.post<ArticleAdminDetail>(`/admin/articles/${id}/publish`),
+    mutationFn: () => adminApi.post<ArticleAdminDetail>(`/articles/${id}/publish`),
     onSuccess: (next) => {
       qc.setQueryData(["article", id], next);
       qc.invalidateQueries({ queryKey: ["articles"] });
@@ -84,7 +87,7 @@ export default function ArticleEditorPage() {
   });
 
   const unpublishMutation = useMutation({
-    mutationFn: () => api.post<ArticleAdminDetail>(`/admin/articles/${id}/unpublish`),
+    mutationFn: () => adminApi.post<ArticleAdminDetail>(`/articles/${id}/unpublish`),
     onSuccess: (next) => {
       qc.setQueryData(["article", id], next);
       qc.invalidateQueries({ queryKey: ["articles"] });
@@ -99,7 +102,7 @@ export default function ArticleEditorPage() {
 
   const regenerateImageMutation = useMutation({
     mutationFn: () =>
-      api.post<ArticleAdminDetail>(`/admin/articles/${id}/regenerate-image`),
+      adminApi.post<ArticleAdminDetail>(`/articles/${id}/regenerate-image`),
     onSuccess: (next) => {
       qc.setQueryData(["article", id], next);
       qc.invalidateQueries({ queryKey: ["articles"] });
