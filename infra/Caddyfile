@@ -1,0 +1,16 @@
+# Auto-HTTPS (Let's Encrypt). DOMAIN is injected from the environment.
+# Routing: the backend is mounted under /api/v1/* ; everything else (incl. the
+# Next.js route handlers /api/auth, /api/admin, /api/contact) goes to the frontend.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Backend API (FastAPI) — only the /api/v1 prefix.
+	handle /api/v1/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else — Next.js (pages + its own /api/* route handlers).
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

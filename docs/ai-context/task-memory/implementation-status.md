@@ -127,11 +127,15 @@
 | Sub-task | Status | Notes |
 |---|---|---|
 | Local dev (Docker Compose) | ✅ | postgres + redis |
-| CI/CD pipeline | 🔲 | `.github/workflows/` not created |
-| Staging env (Railway) | 🔲 | |
-| Sentry integration | 🔲 | SDK installed, DSN not set |
-| Uptime Robot | 🔲 | |
-| Doppler secrets (prod) | 🔲 | |
+| Prod Dockerfiles (backend + frontend) | ✅ | `backend/Dockerfile` (uv), `frontend/Dockerfile` (standalone) — both build verified — 2026-05-25 |
+| Prod compose + Caddy (Hetzner all-in-one) | ✅ | `infra/docker-compose.prod.yml` + `infra/Caddyfile` (auto-TLS) — config validated. **Plan changed Railway/Vercel/Neon/Upstash → single Hetzner box + R2** |
+| CI workflow (lint/typecheck/test/build) | ✅ | `.github/workflows/ci.yml` — not yet run on GitHub |
+| Deploy workflow (GHCR + SSH) | ✅ | `.github/workflows/deploy.yml` — needs repo secrets SSH_HOST/USER/KEY + var DOMAIN |
+| Postgres backups | ✅ | `infra/scripts/backup-postgres.sh` (cron + optional R2 via rclone) |
+| Deploy docs | ✅ | `docs/DEPLOY.md` step-by-step |
+| Provision Hetzner host + DNS + first deploy | 🔲 | Owner action: create server, point DNS, fill `.env`, run first deploy |
+| Sentry integration | 🟡 | wired in `main.py`, DSN not set |
+| Uptime Robot | 🔲 | on `/health` |
 
 ---
 

@@ -7,14 +7,21 @@
 
 ## Currently in progress
 
-### Next up: P0-C CI/CD + cloud envs
-**Goal**: GitHub Actions (lint/typecheck/test/build) + provision Railway/Vercel/Neon/Upstash/R2 + staging.
-**Status**: Not started. Needs owner cloud access + secrets.
-**Context files**: `PROD-IMPLEMENTATION-PLAN.md` (P0-C)
+### Owner action: provision Hetzner host + first deploy
+**Goal**: Create the server, point DNS, fill `.env`, set GitHub secrets, run the first deploy.
+**Status**: Scaffolding done & verified; waiting on owner infra access.
+**Context files**: `docs/DEPLOY.md`
 
 ---
 
 ## Recently completed
+
+### P0-C — Deployment scaffolding: Hetzner all-in-one + R2 (2026-05-25) · branch `feat/deploy-hetzner`
+- **Decision**: dropped Railway/Vercel/Neon/Upstash → single Hetzner box (Docker Compose + Caddy auto-TLS), images via GHCR, Cloudflare R2 kept.
+- `backend/Dockerfile` (uv, python 3.12-slim; API + worker share the image) + `.dockerignore` — `docker build` verified, uvicorn/arq/alembic entrypoints OK.
+- `frontend/Dockerfile` (pnpm pinned `10.33.2` via packageManager, Next standalone) + `.dockerignore` — build verified. Added `output: "standalone"` to next.config; extended `pnpm-workspace.yaml` ignoredBuiltDependencies.
+- `infra/docker-compose.prod.yml` (postgres/redis/backend/worker/frontend/caddy) — config validated. `infra/Caddyfile` (/api/v1/*→backend, rest→frontend) — validated. `infra/.env.prod.example`.
+- `infra/scripts/backup-postgres.sh`, `.github/workflows/ci.yml` + `deploy.yml` (GHCR build/push → SSH pull/migrate/up), `docs/DEPLOY.md`.
 
 ### P1-C — Pre-launch quick fixes (2026-05-25) · branch `feat/prelaunch-fixes`
 - FIX-M1: CTA filters empty-href markdown links (Calendly line dropped when URL unset) — `components/public/article-cta.tsx`.

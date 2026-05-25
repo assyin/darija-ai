@@ -1,0 +1,72 @@
+name: Deploy
+
+# Build images, push to GHCR, then pull + migrate + restart on the Hetzner host.
+# Required repo settings:
+#   Variables:  DOMAIN (e.g. darija-ai.com)
+#   Secrets:    SSH_HOST, SSH_USER, SSH_KEY  (private key with access to the server)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase owner
+        id: owner
+        run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/darija-backend:latest
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/darija-backend:${{ github.sha }}
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://${{ vars.DOMAIN }}/api/v1
+            NEXT_PUBLIC_SITE_URL=https://${{ vars.DOMAIN }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/darija-frontend:latest
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/darija-frontend:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/darija-ai
+            git pull --ff-only
+            docker compose -f infra/docker-compose.prod.yml --env-file .env pull
+            docker compose -f infra/docker-compose.prod.yml --env-file .env run --rm backend alembic upgrade head
+            docker compose -f infra/docker-compose.prod.yml --env-file .env up -d
+            docker image prune -f
