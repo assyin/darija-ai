@@ -17,12 +17,24 @@
 ### REST API
 | Sub-task | Status | Notes |
 |---|---|---|
-| Articles public endpoints (GET list, GET detail) | 🟡 | Code written, not committed |
-| Articles admin endpoints (POST, PATCH, DELETE) | 🟡 | Code written, not committed |
-| Settings endpoints (GET, PATCH) | 🟡 | Code written, not committed |
-| Router wired in main.py | 🟡 | Diff applied, not committed |
-| Auth middleware on admin routes | 🔲 | JWT validation not wired |
-| Rate limiting on public routes | 🔲 | Upstash Ratelimit not integrated |
+| Articles public endpoints (GET list, GET detail) | ✅ | `api/v1/articles.py` — committed `145d487` |
+| Articles admin endpoints (PATCH, publish, unpublish, regenerate-image) | ✅ | Committed `145d487` |
+| Settings endpoints (GET public, GET/PATCH admin, bulk) | ✅ | Committed `145d487` |
+| Router wired in main.py | ✅ | Committed `145d487` |
+| Auth middleware on admin routes | ✅ | `require_admin` on all 10 admin handlers — committed `d247de3` |
+| Rate limiting on `/auth/token` | ✅ | 5 req/IP/10 min, Redis fixed-window — committed `49e7450` |
+| Rate limiting on public routes | 🔲 | Not yet integrated |
+
+### Auth
+| Sub-task | Status | Notes |
+|---|---|---|
+| `core/security.py` — JWT validation + `require_admin` | ✅ | Committed `d247de3` |
+| `api/v1/auth.py` — POST /auth/token | ✅ | Email + password → HS256 JWT, 1h — **production-ready MVP** |
+| `core/rate_limit.py` — IP-based rate limiter | ✅ | 5/10min, fail-open — committed `49e7450` |
+| `schemas/auth.py` — AdminUser, LoginRequest, TokenResponse | ✅ | Committed `d247de3` |
+| Config: `admin_email`, `admin_password` (SecretStr) | ✅ | Dev defaults, prod guard in lifespan |
+| Frontend login form → backend token | 🔲 | REFACTOR-02 Phase B |
+| Password hashing | 🔲 | Explicit MVP deferral |
 
 ### AI Pipeline
 | Sub-task | Status | Notes |
@@ -39,18 +51,21 @@
 ### Worker / Scheduling
 | Sub-task | Status | Notes |
 |---|---|---|
-| One-shot pipeline script | ✅ | `app/scripts/process_article.py` (23KB) |
-| APScheduler setup | 🔲 | No `app/workers/` directory yet |
-| arq job queue wiring | 🔲 | arq installed, not wired |
-| Scheduled scraping (every 30min) | 🔲 | Depends on APScheduler |
+| One-shot pipeline script | ✅ | `app/scripts/process_article.py` (kept as manual wrapper) |
+| `ArticleProcessor` service (per-article pipeline) | ✅ | `app/services/pipeline/article_processor.py` — manages `processing_status` transitions, mypy-strict clean |
+| arq job queue wiring | ✅ | `app/workers/jobs/{fetch_articles,process_articles,retry_failed}.py` |
+| arq scheduler (cron, no APScheduler — D1) | ✅ | `app/workers/settings.py` — boots 4 jobs + 3 cron, Redis-connected |
+| Scheduled scraping (every 30min) | ✅ | cron `fetch_articles` minute={0,30}; process every 10min; retry hourly |
+| `make worker` / `fetch-articles` / `process-pending` | ✅ | root `Makefile` + `app/scripts/process_pending.py` |
+| Worker integration tests (5) | ✅ | `tests/integration/test_article_processor.py` — happy/rejected/failed/image-fail/not-found |
 
 ### Database
 | Sub-task | Status | Notes |
 |---|---|---|
 | Initial schema (7 tables) | ✅ | Migration `20260503_1912_*` |
-| site_settings table | 🟡 | Migration written, not committed |
+| site_settings table | ✅ | Migration committed `145d487` |
 | Seed data (RSS sources) | ✅ | `seed_sources.py` |
-| Seed site settings | 🟡 | `seed_site_settings.py`, not committed |
+| Seed site settings | ✅ | `seed_site_settings.py` committed `145d487` |
 
 ### Tests
 | Sub-task | Status | Notes |
@@ -59,10 +74,13 @@
 | Unit: bidi | ✅ | |
 | Unit: r2_storage | ✅ | |
 | Unit: replicate_client | ✅ | |
-| Integration: articles API | 🟡 | Written, not committed |
-| Integration: settings API | 🟡 | Written, not committed |
+| Unit: security (8 tests) | ✅ | Committed `d247de3` |
+| Integration: articles API | ✅ | Committed `145d487`, updated `d247de3` |
+| Integration: settings API | ✅ | Committed `145d487`, updated `d247de3` |
+| Integration: auth API (5 tests) | ✅ | Committed `49e7450` — covers 429 path, IP isolation, fail-open |
 | Unit: localizer | 🔲 | |
 | Unit: scraping | 🔲 | |
+| Frontend: Vitest + Playwright | 🔲 | REFACTOR-05 |
 
 ### Distribution
 | Sub-task | Status | Notes |
@@ -79,25 +97,28 @@
 ### Public site
 | Sub-task | Status | Notes |
 |---|---|---|
-| Home page (article grid) | 🟡 | Scaffolded, mock data |
-| Article detail page | 🟡 | Scaffolded, mock data |
+| Home page (article grid) | ✅ | `publicApi.getArticles(10)` — committed `86418b1`. E2E verified 2026-05-06. |
+| Article list page | ✅ | `publicApi.getArticles(100)` — committed `86418b1`. E2E verified 2026-05-06. |
+| Article detail page | ✅ | `publicApi.getArticle(slug)` + related fetch — committed `86418b1`. E2E verified 2026-05-06. |
 | Locale routing (ar-MA) | ✅ | next-intl wired |
-| RTL layout + Tajawal font | ✅ | |
+| RTL layout + Tajawal font | ✅ | Verified: 8–12 `dir="rtl"` attrs per page, `lang="ar-MA"` on root `<html>` |
 | About / contact / services pages | ✅ | Static content |
-| Real API integration | 🔲 | Depends on backend commit |
+| JSON-LD on article pages | ✅ | NewsArticle schema, bdi-stripped fields, body placement — E2E verified |
+| `generateMetadata` on home/articles | 🔲 | FIX-S1 — pages use root default only |
+| Custom `not-found.tsx` | 🔲 | FIX-M2 — built-in English 404 currently |
+| OG image dimensions 1200×630 | 🔲 | FIX-M3 — currently 1024×576 |
 | Sitemap / robots.txt / RSS feed | 🔲 | |
-| JSON-LD on article pages | 🔲 | |
 | Plausible / Vercel Analytics | 🔲 | |
 
 ### Admin panel
 | Sub-task | Status | Notes |
 |---|---|---|
-| Articles list | 🟡 | Scaffolded, mock data |
-| Article editor (markdown) | 🟡 | Scaffolded, 13KB |
-| Settings page | 🟡 | Scaffolded, mock data |
-| Sources management | 🟡 | Scaffolded |
-| Login page (magic link) | 🟡 | UI done, NextAuth not wired |
-| Real API integration (admin) | 🔲 | Depends on auth + backend commit |
+| Articles list | 🟡 | Scaffolded, mock data — REFACTOR-02 Phase B |
+| Article editor (markdown) | 🟡 | Scaffolded, 13KB — REFACTOR-02 Phase B |
+| Settings page | 🟡 | Scaffolded, mock data — REFACTOR-02 Phase B |
+| Sources management | 🟡 | Scaffolded — REFACTOR-02 Phase B |
+| Login page → `/api/v1/auth/token` | 🔲 | REFACTOR-02 Phase B (needs token storage) |
+| Real API integration (admin) | 🔲 | REFACTOR-02 Phase B |
 
 ---
 
@@ -107,10 +128,12 @@
 | Local dev (Docker Compose) | ✅ | postgres + redis |
 | CI/CD pipeline | 🔲 | `.github/workflows/` not created |
 | Staging env (Railway) | 🔲 | |
-| Sentry integration | 🔲 | SDK installed, not configured |
+| Sentry integration | 🔲 | SDK installed, DSN not set |
 | Uptime Robot | 🔲 | |
 | Doppler secrets (prod) | 🔲 | |
 
 ---
 
-*Last updated: 2026-05-06*
+*Last updated: 2026-05-25 (P0-A Worker + Scheduler implemented — arq-only, 5 integration tests passing)*
+
+> ⚠️ Known pre-existing test failure (unrelated to P0-A): `test_admin_list_articles_returns_existing` fails because the only seeded article (id=1) was published during E2E (2026-05-06), so the `is_published=false` draft filter returns empty. Data drift, not a code regression.
