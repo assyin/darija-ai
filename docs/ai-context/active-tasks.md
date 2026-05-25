@@ -7,14 +7,24 @@
 
 ## Currently in progress
 
-### Next up: P1-C quick fixes + P0-C CI/CD
-**Goal**: P1-C fast wins (FIX-M1/M2/M3, FIX-S1/S4/S5, password hashing, public rate limit), then P0-C (CI/CD + cloud envs).
-**Status**: Not started.
-**Context files**: `PROD-IMPLEMENTATION-PLAN.md` (P1-C / P0-C), `task-memory/pending-refactors.md`
+### Next up: P0-C CI/CD + cloud envs
+**Goal**: GitHub Actions (lint/typecheck/test/build) + provision Railway/Vercel/Neon/Upstash/R2 + staging.
+**Status**: Not started. Needs owner cloud access + secrets.
+**Context files**: `PROD-IMPLEMENTATION-PLAN.md` (P0-C)
 
 ---
 
 ## Recently completed
+
+### P1-C — Pre-launch quick fixes (2026-05-25) · branch `feat/prelaunch-fixes`
+- FIX-M1: CTA filters empty-href markdown links (Calendly line dropped when URL unset) — `components/public/article-cta.tsx`.
+- FIX-M2: branded Darija 404 — `components/shared/not-found-content.tsx` used by `app/[locale]/not-found.tsx` + global `app/not-found.tsx`. Verified both paths render 404 + Darija.
+- FIX-M3: OG image dims 1200×630 in article metadata.
+- FIX-S1: `generateMetadata` on home + articles list (uses `seo_default_*` settings). Titles verified live.
+- FIX-S4: ICU plural in messages (ar-MA/ar/fr) → "1 مقال" verified.
+- FIX-S5: `request_id` in AppError body (via `request.state`). Verified in 404 JSON.
+- Public rate limiting 60/min/IP — `api/deps.py` `public_rate_limit` dep on public routers; disabled in tests via dependency_overrides.
+- Skipped password hashing (deferred per decision log). tsc + eslint + 56/57 backend tests pass (1 pre-existing data-drift fail).
 
 ### P0-B — Admin panel API wiring (2026-05-25) · not yet committed
 - **D2 resolved**: NextAuth Credentials → backend `/auth/token`; backend JWT in httpOnly session; same-origin authed proxy `app/api/admin/[...path]` injects Bearer server-side.

@@ -23,7 +23,8 @@
 | Router wired in main.py | ✅ | Committed `145d487` |
 | Auth middleware on admin routes | ✅ | `require_admin` on all 10 admin handlers — committed `d247de3` |
 | Rate limiting on `/auth/token` | ✅ | 5 req/IP/10 min, Redis fixed-window — committed `49e7450` |
-| Rate limiting on public routes | 🔲 | Not yet integrated |
+| Rate limiting on public routes | ✅ | 60 req/min/IP via `api/deps.py` `public_rate_limit` dep — 2026-05-25 |
+| `request_id` in error body | ✅ | FIX-S5 — added to AppError handler via `request.state` — 2026-05-25 |
 
 ### Auth
 | Sub-task | Status | Notes |
@@ -104,9 +105,9 @@
 | RTL layout + Tajawal font | ✅ | Verified: 8–12 `dir="rtl"` attrs per page, `lang="ar-MA"` on root `<html>` |
 | About / contact / services pages | ✅ | Static content |
 | JSON-LD on article pages | ✅ | NewsArticle schema, bdi-stripped fields, body placement — E2E verified |
-| `generateMetadata` on home/articles | 🔲 | FIX-S1 — pages use root default only |
-| Custom `not-found.tsx` | 🔲 | FIX-M2 — built-in English 404 currently |
-| OG image dimensions 1200×630 | 🔲 | FIX-M3 — currently 1024×576 |
+| `generateMetadata` on home/articles | ✅ | FIX-S1 — uses site settings seo_default_* — 2026-05-25 |
+| Custom `not-found.tsx` | ✅ | FIX-M2 — branded Darija 404, both `[locale]/` and global `app/not-found.tsx` — 2026-05-25 |
+| OG image dimensions 1200×630 | ✅ | FIX-M3 — article page metadata — 2026-05-25 |
 | Sitemap / robots.txt / RSS feed | 🔲 | |
 | Plausible / Vercel Analytics | 🔲 | |
 

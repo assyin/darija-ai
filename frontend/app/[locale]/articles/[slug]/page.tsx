@@ -39,7 +39,7 @@ export async function generateMetadata({
       description,
       url,
       images: article.hero_image_url
-        ? [{ url: article.hero_image_url, width: 1024, height: 576 }]
+        ? [{ url: article.hero_image_url, width: 1200, height: 630 }]
         : [],
       publishedTime: article.published_at ?? undefined,
     },

@@ -43,7 +43,7 @@
     "no_results": "Aucun article trouvé",
     "previous": "← Précédent",
     "next": "Suivant →",
-    "count": "{count} articles"
+    "count": "{count, plural, one {# article} other {# articles}}"
   },
   "services": {
     "page_title": "Services",

@@ -7,28 +7,27 @@
 
 ## Active task
 
-**P0-A (Worker) + P0-B (Admin wiring) both DONE (2026-05-25). Next: P1-C quick fixes, then P0-C CI/CD.**
+**P0-A (worker), P0-B (admin), P1-C (quick fixes) all DONE (2026-05-25). Next: P0-C CI/CD + cloud envs.**
 
-- **P0-A** committed `3da42a5` (branch `feat/worker-scheduler`): arq jobs + cron scheduler.
-- **P0-B** done (D2 = NextAuth httpOnly session + same-origin authed proxy). Login→list→edit→publish verified E2E via curl. tsc + eslint clean.
+Committed:
+- `3da42a5` P0-A worker — branch `feat/worker-scheduler`
+- `71a9f79` P0-B admin wiring — branch `feat/admin-wiring`
+- P1-C quick fixes — branch `feat/prelaunch-fixes` (this commit)
 
-Next per `PROD-IMPLEMENTATION-PLAN.md`:
-- **P1-C** quick fixes (can start now): FIX-M1/M2/M3, FIX-S1/S4/S5, backend password hashing, public rate limiting.
-- **P0-C** CI/CD + envs (GitHub Actions, Railway/Vercel/Neon/Upstash/R2, staging).
-- Remaining admin gap: sources page needs a backend `/admin/sources` endpoint (separate task).
-
-## Files actively modified (unstaged)
-
-P0-B (not yet committed): `frontend/lib/auth.ts`, `frontend/types/next-auth.d.ts`, `frontend/app/(admin)/login/page.tsx`, `frontend/lib/api-client.ts`, `frontend/app/api/admin/[...path]/route.ts`, `frontend/app/(admin)/admin/{articles/page,articles/[id]/page,settings/page}.tsx`.
+P1-C done: FIX-M1 (CTA empty-link filter), FIX-M2 (branded Darija 404 ×2), FIX-M3 (OG 1200×630), FIX-S1 (generateMetadata home/articles), FIX-S4 (Arabic plural), FIX-S5 (request_id in errors), public rate limiting (60/min/IP). All verified live via curl. Password hashing intentionally skipped (deferred per decision log).
 
 ## Next concrete action
 
-1. Commit P0-B as `feat(admin): wire admin panel to backend via authed proxy`.
-2. Start P1-C quick fixes (independent, fast wins).
+1. **P0-C** — CI/CD (GitHub Actions) + provision Railway/Vercel/Neon/Upstash/R2 + staging. Needs owner cloud access + secrets.
+2. Smaller remaining items: FIX-S2 (dateModified=updated_at — needs backend to expose `updated_at` in ArticlePublicDetail), backend `/admin/sources` endpoint (to un-hardcode the admin sources page), frontend test suite (REFACTOR-05), SEO sitemap/robots/feed (P1-A), Sentry DSN (P1-B).
 
 ## Blocked on
 
-- Nothing blocking. P0-C needs cloud account/secrets access (Railway, Vercel, Neon, Upstash, R2, GitHub secrets).
+- P0-C needs cloud account/secrets access (Railway, Vercel, Neon, Upstash, R2, GitHub secrets).
+
+## Known pre-existing issue (not a regression)
+
+`test_admin_list_articles_returns_existing` fails: the only seeded article (id=1) is published, so the `is_published=false` draft filter returns empty. Data drift since E2E publish. Full suite otherwise: 56 passed.
 
 ---
 

@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     admin_jwt_expiry_seconds: int = 3600
     auth_login_rate_limit_max_requests: int = 5
     auth_login_rate_limit_window_seconds: int = 600
+    public_rate_limit_max_requests: int = 60
+    public_rate_limit_window_seconds: int = 60
 
     @property
     def is_dev(self) -> bool:

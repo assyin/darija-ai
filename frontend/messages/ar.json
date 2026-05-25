@@ -43,7 +43,7 @@
     "no_results": "لا توجد مقالات",
     "previous": "← السابق",
     "next": "التالي →",
-    "count": "{count} مقالات"
+    "count": "{count, plural, one {# مقال} other {# مقالات}}"
   },
   "services": {
     "page_title": "الخدمات",

@@ -7,6 +7,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
+from app.api.deps import public_rate_limit
 from app.core.db import AsyncSessionLocal
 from app.core.security import create_access_token
 from app.main import create_app
@@ -30,6 +31,9 @@ def auth_headers(admin_token: str) -> dict[str, str]:
 async def client() -> AsyncIterator[AsyncClient]:
     """HTTPX async client wired to the FastAPI app via ASGITransport."""
     app = create_app()
+    # Public rate limiting would otherwise accumulate across tests on a shared
+    # IP key and flake the suite — disable it for integration tests.
+    app.dependency_overrides[public_rate_limit] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

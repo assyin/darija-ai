@@ -30,7 +30,12 @@ export function ArticleCTA({ settings }: ArticleCTAProps) {
 
   if (!template || (!whatsapp && !email)) return null;
 
-  const rendered = renderTemplate(template, settings);
+  // Drop template lines whose markdown link resolved to an empty href — e.g.
+  // the Calendly line when calendly_url is unset — so we never render <a href="">.
+  const rendered = renderTemplate(template, settings)
+    .split("\n")
+    .filter((line) => !/\]\(\s*\)/.test(line))
+    .join("\n");
 
   return (
     <aside

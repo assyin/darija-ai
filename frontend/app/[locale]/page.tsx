@@ -1,9 +1,39 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Bot, GraduationCap, LineChart, Workflow } from "lucide-react";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { publicApi } from "@/lib/api-client";
+import { getSiteSettings } from "@/lib/use-site-settings";
+
+const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSiteSettings();
+  const title = s.seo_default_title || s.business_name || "DarijaAI";
+  const description = s.seo_default_description || "";
+  const ogImage = s.business_logo_url;
+  return {
+    title,
+    description,
+    alternates: { canonical: SITE_BASE },
+    openGraph: {
+      type: "website",
+      locale: "ar_MA",
+      title,
+      description,
+      url: SITE_BASE,
+      images: ogImage ? [{ url: ogImage, width: 1200, height: 630 }] : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: ogImage ? [ogImage] : [],
+    },
+  };
+}
 
 export default async function HomePage({
   params,
