@@ -72,7 +72,8 @@ def normalize_url(url: str) -> str:
     path = parts.path.rstrip("/") if parts.path != "/" else ""
 
     kept_params = [
-        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        (k, v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
         if not _is_tracking_param(k)
     ]
     query = urlencode(kept_params, doseq=True)

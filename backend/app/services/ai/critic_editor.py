@@ -76,9 +76,7 @@ class CriticEditor:
         self._prompt_version = prompt_version
         self._model = model or provider.default_model
 
-    async def review(
-        self, draft: LocalizedArticle, original_source: str
-    ) -> CriticEditorResult:
+    async def review(self, draft: LocalizedArticle, original_source: str) -> CriticEditorResult:
         system = PromptLoader.load("critic_editor", self._prompt_version)
 
         clean_draft = _draft_to_clean_dict(draft)

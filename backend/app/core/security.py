@@ -42,7 +42,7 @@ def require_admin(
             algorithms=[settings.admin_jwt_algorithm],
         )
     except JWTError:
-        raise UnauthorizedError("Authentication required")
+        raise UnauthorizedError("Authentication required") from None
 
     sub: str | None = payload.get("sub")
     if not sub:

@@ -17,7 +17,7 @@ class SiteSetting(SQLModel, table=True):
     __tablename__ = "site_settings"
     __table_args__ = (
         CheckConstraint(
-            "value_type IN ('string', 'url', 'phone', 'email', 'html', 'markdown', 'boolean', 'integer')",
+            "value_type IN ('string', 'url', 'phone', 'email', 'html', 'markdown', 'boolean', 'integer')",  # noqa: E501
             name="check_value_type",
         ),
         CheckConstraint(

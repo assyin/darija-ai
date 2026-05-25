@@ -38,28 +38,104 @@ _CTA_TEMPLATE_DARIJA = (
 
 SEED_SETTINGS: list[Seed] = [
     # Contact (public)
-    Seed("contact_whatsapp", "+212 600 000 000", "phone", "contact", "Numéro WhatsApp", "Format international, ex: +212 600 000 000", True),
-    Seed("contact_email", "contact@darija-ai.com", "email", "contact", "Email pro", "Email affiché publiquement", True),
-    Seed("calendly_url", "", "url", "contact", "Lien Calendly", "URL complète, vide si pas configuré", True),
-
+    Seed(
+        "contact_whatsapp",
+        "+212 600 000 000",
+        "phone",
+        "contact",
+        "Numéro WhatsApp",
+        "Format international, ex: +212 600 000 000",
+        True,
+    ),
+    Seed(
+        "contact_email",
+        "contact@darija-ai.com",
+        "email",
+        "contact",
+        "Email pro",
+        "Email affiché publiquement",
+        True,
+    ),
+    Seed(
+        "calendly_url",
+        "",
+        "url",
+        "contact",
+        "Lien Calendly",
+        "URL complète, vide si pas configuré",
+        True,
+    ),
     # Social (public)
     Seed("linkedin_url", "", "url", "social", "URL LinkedIn", "Profil LinkedIn complet", True),
     Seed("instagram_url", "", "url", "social", "URL Instagram", "Profil Instagram", True),
     Seed("tiktok_url", "", "url", "social", "URL TikTok", "Compte TikTok", True),
     Seed("twitter_url", "", "url", "social", "URL X (Twitter)", "Profil X", True),
-
     # Branding (public)
-    Seed("business_name", "DarijaAI", "string", "branding", "Nom du site", "Nom affiché dans header/footer", True),
-    Seed("business_owner_name", "Yassine", "string", "branding", "Nom du fondateur", "Affiché dans CTA et About", True),
-    Seed("business_owner_role", "مطور و خبير AI", "string", "branding", "Rôle/titre du fondateur", "En darija, affiché dans CTA", True),
-    Seed("business_tagline_darija", "أول منصة لأخبار الذكاء الاصطناعي بالدارجة المغربية", "string", "branding", "Tagline darija", "Affiché homepage hero", True),
+    Seed(
+        "business_name",
+        "DarijaAI",
+        "string",
+        "branding",
+        "Nom du site",
+        "Nom affiché dans header/footer",
+        True,
+    ),
+    Seed(
+        "business_owner_name",
+        "Yassine",
+        "string",
+        "branding",
+        "Nom du fondateur",
+        "Affiché dans CTA et About",
+        True,
+    ),
+    Seed(
+        "business_owner_role",
+        "مطور و خبير AI",
+        "string",
+        "branding",
+        "Rôle/titre du fondateur",
+        "En darija, affiché dans CTA",
+        True,
+    ),
+    Seed(
+        "business_tagline_darija",
+        "أول منصة لأخبار الذكاء الاصطناعي بالدارجة المغربية",
+        "string",
+        "branding",
+        "Tagline darija",
+        "Affiché homepage hero",
+        True,
+    ),
     Seed("business_logo_url", "", "url", "branding", "URL du logo", "Image hébergée sur R2", True),
-
     # SEO (public)
-    Seed("seo_default_title", "DarijaAI - أخبار الذكاء الاصطناعي بالدارجة", "string", "seo", "Titre SEO par défaut", "Utilisé sur homepage", True),
-    Seed("seo_default_description", "أول منصة مغربية لأخبار AI بالدارجة. كنشرحو ليك التكنولوجيا اللي كتغير العالم.", "string", "seo", "Description SEO par défaut", "Meta description homepage", True),
-    Seed("seo_keywords", "AI, IA, ذكاء اصطناعي, دارجة, المغرب, ChatGPT, تكنولوجيا", "string", "seo", "Keywords SEO", "Liste séparée par virgules", True),
-
+    Seed(
+        "seo_default_title",
+        "DarijaAI - أخبار الذكاء الاصطناعي بالدارجة",
+        "string",
+        "seo",
+        "Titre SEO par défaut",
+        "Utilisé sur homepage",
+        True,
+    ),
+    Seed(
+        "seo_default_description",
+        "أول منصة مغربية لأخبار AI بالدارجة. كنشرحو ليك التكنولوجيا اللي كتغير العالم.",
+        "string",
+        "seo",
+        "Description SEO par défaut",
+        "Meta description homepage",
+        True,
+    ),
+    Seed(
+        "seo_keywords",
+        "AI, IA, ذكاء اصطناعي, دارجة, المغرب, ChatGPT, تكنولوجيا",
+        "string",
+        "seo",
+        "Keywords SEO",
+        "Liste séparée par virgules",
+        True,
+    ),
     # CTA template — public so the frontend can render it on every article.
     # The article CTA is part of the published content, not a secret.
     Seed(
@@ -68,13 +144,28 @@ SEED_SETTINGS: list[Seed] = [
         "markdown",
         "cta",
         "Template CTA Darija",
-        "Placeholders: {{business_owner_name}}, {{business_owner_role}}, {{contact_whatsapp}}, {{contact_whatsapp_clean}}, {{calendly_url}}, {{contact_email}}. Affiché en bas de chaque article.",
+        "Placeholders: {{business_owner_name}}, {{business_owner_role}}, {{contact_whatsapp}}, {{contact_whatsapp_clean}}, {{calendly_url}}, {{contact_email}}. Affiché en bas de chaque article.",  # noqa: E501
         True,
     ),
-
     # Admin (private)
-    Seed("admin_notification_email", "", "email", "admin", "Email pour notifications", "Reçoit les notifications de nouveaux drafts", False),
-    Seed("articles_per_page", "12", "integer", "admin", "Articles par page", "Pagination homepage et listing", False),
+    Seed(
+        "admin_notification_email",
+        "",
+        "email",
+        "admin",
+        "Email pour notifications",
+        "Reçoit les notifications de nouveaux drafts",
+        False,
+    ),
+    Seed(
+        "articles_per_page",
+        "12",
+        "integer",
+        "admin",
+        "Articles par page",
+        "Pagination homepage et listing",
+        False,
+    ),
 ]
 
 

@@ -132,9 +132,7 @@ class Localizer:
             )
 
         system = PromptLoader.load("localizer", self._prompt_version)
-        user = self._build_user_message(
-            title=title, content=content, source_name=source_name
-        )
+        user = self._build_user_message(title=title, content=content, source_name=source_name)
 
         logger.info(
             "localizer.started",
@@ -267,12 +265,9 @@ class Localizer:
 
     def _build_cache_key(self, *, title: str, content: str) -> str:
         prompt_hash = PromptLoader.hash("localizer", self._prompt_version)[:16]
-        content_hash = hashlib.sha256(
-            f"{title}|{content}".encode("utf-8")
-        ).hexdigest()[:16]
+        content_hash = hashlib.sha256(f"{title}|{content}".encode()).hexdigest()[:16]
         return (
-            f"localizer:{self._provider.provider_name}:{self._model}:"
-            f"{prompt_hash}:{content_hash}"
+            f"localizer:{self._provider.provider_name}:{self._model}:{prompt_hash}:{content_hash}"
         )
 
     async def _read_cache(self, key: str) -> LocalizedArticle | None:

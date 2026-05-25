@@ -63,9 +63,7 @@ async def main() -> int:
     try:
         async with AsyncSessionLocal() as session:
             for seed in SEED_SOURCES:
-                existing = await session.scalar(
-                    select(Source).where(Source.name == seed["name"])
-                )
+                existing = await session.scalar(select(Source).where(Source.name == seed["name"]))
                 if existing is None:
                     source = Source(
                         name=seed["name"],

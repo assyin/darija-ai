@@ -27,9 +27,7 @@ async def get_public_settings(
     The frontend fetches this once per page load (cached client-side).
     Public — no auth required.
     """
-    result = await session.execute(
-        select(SiteSetting).where(SiteSetting.is_public.is_(True))
-    )
+    result = await session.execute(select(SiteSetting).where(SiteSetting.is_public.is_(True)))
     settings = result.scalars().all()
     return {s.key: s.value for s in settings}
 

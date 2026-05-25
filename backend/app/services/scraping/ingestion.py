@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,9 +38,7 @@ class IngestionService:
         self._rss_fetcher = rss_fetcher
         self._max_items_per_source = max_items_per_source
 
-    async def ingest_source(
-        self, source: Source, session: AsyncSession
-    ) -> IngestionResult:
+    async def ingest_source(self, source: Source, session: AsyncSession) -> IngestionResult:
         # Capture as locals up front: rollbacks expire ORM attributes, which would
         # cause MissingGreenlet on later access in this async context.
         assert source.id is not None
@@ -162,15 +160,11 @@ class IngestionService:
         # Use UPDATE rather than ORM mutation so a prior rollback (which expires
         # ORM attributes) doesn't trigger a sync lazy-load in this async context.
         await session.execute(
-            update(Source)
-            .where(Source.id == source_id)
-            .values(last_fetched_at=datetime.now(timezone.utc))
+            update(Source).where(Source.id == source_id).values(last_fetched_at=datetime.now(UTC))
         )
         await session.commit()
 
-    async def ingest_all_active(
-        self, session: AsyncSession
-    ) -> list[IngestionResult]:
+    async def ingest_all_active(self, session: AsyncSession) -> list[IngestionResult]:
         sources = (
             await session.scalars(
                 select(Source).where(Source.is_active.is_(True)).order_by(Source.id)

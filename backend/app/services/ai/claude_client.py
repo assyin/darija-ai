@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from decimal import Decimal
 
 import anthropic
 from anthropic import AsyncAnthropic
@@ -16,7 +15,10 @@ from tenacity import (
 from app.core.exceptions import ExternalServiceError
 from app.core.logging import get_logger
 from app.services.ai.llm_provider import LLMResponse
-from app.services.ai.pricing import MODEL_PRICING, compute_cost  # noqa: F401  (re-exported for back-compat)
+from app.services.ai.pricing import (  # noqa: F401  (re-exported for back-compat)
+    MODEL_PRICING,
+    compute_cost,
+)
 
 logger = get_logger("services.ai.claude_client")
 

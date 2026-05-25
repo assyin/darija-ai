@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -46,11 +46,7 @@ async def list_public_articles(
     )
     if category:
         stmt = stmt.where(Article.categories.any(category))
-    stmt = (
-        stmt.order_by(Article.published_at.desc().nullslast())
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = stmt.order_by(Article.published_at.desc().nullslast()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -111,11 +107,7 @@ async def list_articles_admin(
     stmt = select(Article).where(Article.deleted_at.is_(None))
     if is_published is not None:
         stmt = stmt.where(Article.is_published.is_(is_published))
-    stmt = (
-        stmt.order_by(Article.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = stmt.order_by(Article.created_at.desc()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -162,7 +154,7 @@ async def update_article_admin(
         article.word_count = wc
         article.reading_time_minutes = max(1, math.ceil(wc / WORDS_PER_MINUTE))
 
-    article.updated_at = datetime.now(timezone.utc)
+    article.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(article)
     return article
@@ -181,7 +173,7 @@ async def publish_article(
             details={"article_id": article_id},
         )
     article.is_published = True
-    article.published_at = datetime.now(timezone.utc)
+    article.published_at = datetime.now(UTC)
     article.updated_at = article.published_at
     await session.commit()
     await session.refresh(article)
@@ -208,7 +200,7 @@ async def unpublish_article(
         )
     article.is_published = False
     # We keep published_at as historical info — only the flag flips.
-    article.updated_at = datetime.now(timezone.utc)
+    article.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(article)
     logger.info(
@@ -237,10 +229,7 @@ async def regenerate_article_image(
         )
 
     # Best-effort prompt: use stored alt or fall back to the article title.
-    prompt = (
-        article.hero_image_alt
-        or f"Editorial illustration about: {article.title_darija}"
-    )
+    prompt = article.hero_image_alt or f"Editorial illustration about: {article.title_darija}"
 
     settings = get_settings()
     if not settings.r2_endpoint_url:
@@ -259,12 +248,10 @@ async def regenerate_article_image(
         public_url=settings.r2_public_url,
     )
     generator = ImageGenerator(provider=provider, storage=storage)
-    outcome = await generator.generate_and_upload(
-        prompt=prompt, article_slug=article.slug
-    )
+    outcome = await generator.generate_and_upload(prompt=prompt, article_slug=article.slug)
 
     article.hero_image_url = outcome.public_url
-    article.updated_at = datetime.now(timezone.utc)
+    article.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(article)
     logger.info(

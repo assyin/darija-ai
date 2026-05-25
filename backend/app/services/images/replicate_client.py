@@ -36,9 +36,7 @@ _ASPECT_DIMENSIONS: dict[str, tuple[int, int]] = {
     "2:3": (683, 1024),
 }
 
-_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    httpx.HTTPError,
-)
+_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (httpx.HTTPError,)
 
 
 class ReplicateClient:
@@ -56,9 +54,7 @@ class ReplicateClient:
         self._client = replicate.Client(api_token=api_token)
         self._model = model
 
-    async def generate(
-        self, *, prompt: str, aspect_ratio: str = "16:9"
-    ) -> ImageGenerationResult:
+    async def generate(self, *, prompt: str, aspect_ratio: str = "16:9") -> ImageGenerationResult:
         input_payload: dict[str, object] = {
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
