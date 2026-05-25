@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.core.logging import get_logger
@@ -52,7 +52,7 @@ class ImageGenerator:
 
         result = await self._provider.generate(prompt=prompt, aspect_ratio=aspect_ratio)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ext = _MIME_TO_EXT.get(result.mime_type, "webp")
         key = f"articles/{now:%Y}/{now:%m}/{article_slug}.{ext}"
 

@@ -5,7 +5,7 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,9 +26,9 @@ from app.services.ai.llm_provider import LLMProvider, LLMResponse
 from app.services.ai.localizer import LocalizedArticle, Localizer
 from app.services.ai.openai_client import OpenAIClient
 from app.services.ai.quality_gate import QualityCheckResult, QualityGate
-from app.services.images.image_generator import ImageGenerator, ImageGenerationOutcome
-from app.services.images.replicate_client import ReplicateClient
+from app.services.images.image_generator import ImageGenerationOutcome, ImageGenerator
 from app.services.images.r2_storage import R2Storage
+from app.services.images.replicate_client import ReplicateClient
 
 DEFAULT_LOGS_DIR = Path("logs")
 HAIKU = "claude-haiku-4-5"
@@ -111,11 +111,7 @@ def _write_markdown(
         f"slug: {article.slug}\n"
         f"---\n\n"
     )
-    body = (
-        f"# {article.title_darija}\n\n"
-        f"*{article.excerpt_darija}*\n\n"
-        f"{article.content_darija}\n"
-    )
+    body = f"# {article.title_darija}\n\n*{article.excerpt_darija}*\n\n{article.content_darija}\n"
     suffix = ""
     if corrections is not None:
         bullets = "\n".join(f"- {c}" for c in corrections) or "- (none reported)"
@@ -170,16 +166,12 @@ def _print_run_report(
 
 async def _load_article(article_id: int) -> tuple[RawArticle, str]:
     async with AsyncSessionLocal() as session:
-        raw = await session.scalar(
-            select(RawArticle).where(RawArticle.id == article_id)
-        )
+        raw = await session.scalar(select(RawArticle).where(RawArticle.id == article_id))
         if raw is None:
             raise SystemExit(f"raw_article id={article_id} not found")
         source_name = "unknown"
         if raw.source_id:
-            src = await session.scalar(
-                select(Source).where(Source.id == raw.source_id)
-            )
+            src = await session.scalar(select(Source).where(Source.id == raw.source_id))
             if src:
                 source_name = src.name
     return raw, source_name
@@ -226,9 +218,7 @@ async def main(article_id: int, mode: str, output: Path, skip_image: bool = Fals
 
         base_provider = ClaudeClient(settings.anthropic_api_key)
         provider = CostTrackingProvider(base_provider)
-        localizer = Localizer(
-            provider=provider, redis_client=redis, model=writer_model
-        )
+        localizer = Localizer(provider=provider, redis_client=redis, model=writer_model)
         quality_gate = QualityGate()
 
         t0 = time.perf_counter()
@@ -372,9 +362,7 @@ async def _persist_article(
     the admin panel (ADR-002).
     """
     async with AsyncSessionLocal() as session:
-        existing = await session.scalar(
-            select(Article).where(Article.raw_article_id == raw.id)
-        )
+        existing = await session.scalar(select(Article).where(Article.raw_article_id == raw.id))
         if existing is None:
             article = Article(
                 raw_article_id=raw.id,
@@ -407,7 +395,7 @@ async def _persist_article(
             existing.tags = final_article.tags
             existing.reading_time_minutes = final_article.reading_time_minutes
             existing.word_count = final_article.word_count
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.updated_at = datetime.now(UTC)
             article = existing
         await session.commit()
         await session.refresh(article)
@@ -567,7 +555,7 @@ def _write_cross_model_markdown(
         f"total_duration_ms: {result.total_duration_ms}\n"
         f"overall_quality_score: {result.overall_quality_score}\n"
         f"defects_count: {len(result.defects_found)}\n"
-        f"defects_count_by_category: {json.dumps(result.defects_count_by_category, ensure_ascii=False)}\n"
+        f"defects_count_by_category: {json.dumps(result.defects_count_by_category, ensure_ascii=False)}\n"  # noqa: E501
         f"corrections_count: {len(result.corrections_applied)}\n"
         f"rewriter_skipped: {result.rewriter_skipped}\n"
         f"quality_gate: {'passed' if quality.passed else 'failed'}\n"
@@ -578,11 +566,7 @@ def _write_cross_model_markdown(
         f"slug: {article.slug}\n"
         f"---\n\n"
     )
-    body = (
-        f"# {article.title_darija}\n\n"
-        f"*{article.excerpt_darija}*\n\n"
-        f"{article.content_darija}\n"
-    )
+    body = f"# {article.title_darija}\n\n*{article.excerpt_darija}*\n\n{article.content_darija}\n"
     defects_section = ""
     if result.defects_found:
         defects_section = "\n---\n\n## Defects flagged by GPT critic\n"
@@ -598,9 +582,7 @@ def _write_cross_model_markdown(
         for c in result.corrections_applied:
             corrections_section += f"- {c}\n"
 
-    output_path.write_text(
-        front + body + defects_section + corrections_section, encoding="utf-8"
-    )
+    output_path.write_text(front + body + defects_section + corrections_section, encoding="utf-8")
 
 
 def _print_cross_model_report(

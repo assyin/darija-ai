@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Column,
@@ -17,7 +17,7 @@ from sqlmodel import Field, SQLModel
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Article(SQLModel, table=True):
@@ -49,9 +49,7 @@ class Article(SQLModel, table=True):
             index=True,
         )
     )
-    slug: str = Field(
-        sa_column=Column(String(255), nullable=False, unique=True, index=True)
-    )
+    slug: str = Field(sa_column=Column(String(255), nullable=False, unique=True, index=True))
     title_darija: str = Field(sa_column=Column(Text, nullable=False))
     excerpt_darija: str = Field(sa_column=Column(Text, nullable=False))
     content_darija: str = Field(sa_column=Column(Text, nullable=False))

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import ClassVar
 
 
 class PromptLoader:
     """Loads versioned prompts from disk and caches them in memory."""
 
     _PROMPTS_DIR: Path = Path(__file__).parent / "prompts"
-    _cache: dict[tuple[str, str], str] = {}
+    _cache: ClassVar[dict[tuple[str, str], str]] = {}
 
     @classmethod
     def load(cls, name: str, version: str) -> str:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     CheckConstraint,
@@ -16,14 +16,14 @@ from sqlmodel import Field, SQLModel
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RawArticle(SQLModel, table=True):
     __tablename__ = "raw_articles"
     __table_args__ = (
         CheckConstraint(
-            "processing_status IN ('pending','processing','translated','published','failed','rejected')",
+            "processing_status IN ('pending','processing','translated','published','failed','rejected')",  # noqa: E501
             name="ck_raw_articles_processing_status",
         ),
         Index(
@@ -43,9 +43,7 @@ class RawArticle(SQLModel, table=True):
         )
     )
     external_url: str = Field(sa_column=Column(Text, nullable=False, unique=True))
-    url_hash: str = Field(
-        sa_column=Column(String(64), nullable=False, unique=True, index=True)
-    )
+    url_hash: str = Field(sa_column=Column(String(64), nullable=False, unique=True, index=True))
     original_title: str = Field(sa_column=Column(Text, nullable=False))
     original_content: str = Field(sa_column=Column(Text, nullable=False))
     original_excerpt: str | None = Field(default=None, sa_column=Column(Text, nullable=True))

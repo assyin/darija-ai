@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: darija
+          POSTGRES_PASSWORD: darija_dev
+          POSTGRES_DB: darija_ai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U darija -d darija_ai"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://darija:darija_dev@localhost:5432/darija_ai
+      REDIS_URL: redis://localhost:6379/0
+      ANTHROPIC_API_KEY: test-anthropic-key
+      REPLICATE_API_TOKEN: test-replicate-token
+      ENVIRONMENT: dev
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check app && uv run ruff format --check app
+      - name: Typecheck (worker + pipeline)
+        run: uv run mypy --strict app/workers app/services/pipeline
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - name: Test
+        run: uv run pytest --no-cov
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+      - name: Lint
+        run: pnpm exec eslint .
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://example.com/api/v1
+          NEXT_PUBLIC_SITE_URL: https://example.com

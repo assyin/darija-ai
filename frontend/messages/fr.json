@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "articles": "Articles",
+    "services": "Services",
+    "about": "À propos",
+    "contact": "Contact"
+  },
+  "home": {
+    "tagline": "DarijaAI · Première plateforme marocaine",
+    "hero_title": "L'actualité IA, expliquée en darija",
+    "hero_subtitle": "Une technologie globale, dans la langue qu'on parle vraiment",
+    "hero_cta_primary": "Lire les articles",
+    "hero_cta_secondary": "Découvrir les services",
+    "featured_title": "Articles à la une",
+    "recent_title": "Derniers articles",
+    "see_all": "Tous les articles",
+    "newsletter_title": "Restez informé",
+    "newsletter_subtitle": "L'essentiel de l'IA, en darija, chaque semaine",
+    "newsletter_placeholder": "Votre email",
+    "newsletter_cta": "S'abonner",
+    "newsletter_success": "C'est fait — à très vite dans votre boîte.",
+    "newsletter_error": "Une erreur est survenue, réessayez"
+  },
+  "article": {
+    "reading_time": "{minutes} min de lecture",
+    "published_on": "Publié le",
+    "share": "Partager",
+    "share_whatsapp": "WhatsApp",
+    "share_twitter": "X",
+    "share_linkedin": "LinkedIn",
+    "copy_link": "Copier le lien",
+    "copied": "Lien copié",
+    "back_to_articles": "← Tous les articles",
+    "related_articles": "Articles liés",
+    "source_credit": "D'après {source}"
+  },
+  "articles_list": {
+    "page_title": "Tous les articles",
+    "page_subtitle": "Actualités et analyses IA en darija marocaine",
+    "search_placeholder": "Rechercher...",
+    "filter_all": "Tout",
+    "no_results": "Aucun article trouvé",
+    "previous": "← Précédent",
+    "next": "Suivant →",
+    "count": "{count, plural, one {# article} other {# articles}}"
+  },
+  "services": {
+    "page_title": "Services",
+    "page_subtitle": "On accompagne les entreprises et professionnels marocains avec l'IA",
+    "service_1_title": "🌐 Site web + chatbot IA",
+    "service_1_desc": "Un site professionnel avec chatbot intelligent pour votre entreprise. Design moderne, rapide, mobile-first.",
+    "service_2_title": "🤖 Automatisation",
+    "service_2_desc": "CRM, WhatsApp, emails — tout en automatique. Économisez des heures sur les tâches répétitives.",
+    "service_3_title": "📚 Formation des équipes",
+    "service_3_desc": "Ateliers pratiques. Apprenez prompts, automatisation, ChatGPT au service de votre métier.",
+    "service_4_title": "💡 Conseil technique",
+    "service_4_desc": "Pour les PME marocaines. Une feuille de route IA claire, sans jargon inutile.",
+    "cta_title": "Envie d'appliquer l'IA dans votre activité ?",
+    "cta_subtitle": "Réservez un call gratuit et on définit ce qui vous convient",
+    "cta_button": "Me contacter"
+  },
+  "about": {
+    "page_title": "À propos",
+    "intro": "Première plateforme marocaine d'actualités IA en darija",
+    "mission_title": "Notre mission",
+    "mission_text": "Rendre l'IA claire et accessible aux Marocains. Une technologie qui change le monde doit s'expliquer dans la langue qu'on parle.",
+    "why_darija_title": "Pourquoi la darija ?",
+    "why_darija_text": "La darija, c'est la langue dans laquelle on pense, on explique, on comprend le mieux. L'IA n'est pas réservée aux anglophones — elle est aussi à nous.",
+    "founder_intro": "Fondé par"
+  },
+  "contact": {
+    "page_title": "Contact",
+    "page_subtitle": "Une question, un projet, une collaboration — écrivez-nous",
+    "form_name": "Nom",
+    "form_email": "Email",
+    "form_message": "Message",
+    "form_submit": "Envoyer",
+    "form_success": "Reçu — on revient vers vous rapidement.",
+    "form_error": "Une erreur est survenue, réessayez",
+    "or_directly": "Ou directement :",
+    "via_whatsapp": "Via WhatsApp",
+    "via_email": "Par email",
+    "via_calendly": "Réserver un call"
+  },
+  "footer": {
+    "about_title": "À propos",
+    "about_text": "Plateforme marocaine d'actualités IA en darija.",
+    "links_title": "Liens rapides",
+    "follow_title": "Suivez-nous",
+    "rights": "© {year} {name}. Tous droits réservés.",
+    "made_with": "Fabriqué au Maroc 🇲🇦"
+  },
+  "common": {
+    "read_more": "Lire la suite",
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue"
+  }
+}

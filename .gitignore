@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!infra/.env.prod.example
 .doppler/
 *.key
 *.pem

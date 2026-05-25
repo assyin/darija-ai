@@ -1,0 +1,48 @@
+# .claudeignore — Claude Code context exclusion
+# Syntax: .gitignore format. Files here are never auto-loaded by Claude.
+# You can still read any file explicitly with the Read tool.
+
+# ─── Build artifacts ────────────────────────────────────────────────────────
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+frontend/next-env.d.ts
+**/__pycache__/
+backend/.venv/
+backend/.mypy_cache/
+frontend/node_modules/
+
+# ─── Dependency lockfiles (never useful as AI context) ───────────────────────
+backend/uv.lock
+frontend/pnpm-lock.yaml
+
+# ─── Runtime logs (ephemeral, large, zero decision value) ────────────────────
+backend/logs/
+frontend/frontend_dev.log
+
+# ─── Media / screenshots ─────────────────────────────────────────────────────
+SCREEN/
+
+# ─── Test result artifacts (50KB+ of raw model outputs) ─────────────────────
+docs/test-results/
+
+# ─── Oversized prompt files (52KB — load explicitly only when editing) ───────
+# Still accessible via: Read backend/app/services/ai/prompts/localizer_v1.md
+backend/app/services/ai/prompts/localizer_v1.md
+
+# ─── Non-production AI code (preserved but not in prod pipeline) ─────────────
+backend/app/services/ai/cross_model_pipeline.py
+backend/app/services/ai/openai_client.py
+backend/app/services/ai/critic_editor.py
+backend/app/services/ai/prompts/critic_v1.md
+backend/app/services/ai/prompts/critic_editor_v1.md
+backend/app/services/ai/prompts/rewriter_v1.md
+
+# ─── Archived / backup files ─────────────────────────────────────────────────
+claude.full.backup.md
+
+# ─── Compiled Python bytecode ────────────────────────────────────────────────
+**/*.pyc
+**/*.pyo
+
+# ─── Alembic compiled cache ───────────────────────────────────────────────────
+backend/alembic/versions/*.pyc

@@ -10,7 +10,7 @@ from app.services.scraping.rss_fetcher import RSSFetcher
 
 
 def _print_summary(results: list[IngestionResult]) -> None:
-    header = f"{'Source':<24} {'Fetched':>8} {'Inserted':>9} {'Skipped':>8} {'Rejected':>9} {'Duration':>10}"
+    header = f"{'Source':<24} {'Fetched':>8} {'Inserted':>9} {'Skipped':>8} {'Rejected':>9} {'Duration':>10}"  # noqa: E501
     sep = "-" * len(header)
     print(sep)
     print(header)

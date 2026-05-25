@@ -175,9 +175,7 @@ class CrossModelPipeline:
         )
         critic_cost = self._critic_tracker.total_cost
         defects = list(critic_payload.get("defects_found") or [])
-        defects_count_by_category = dict(
-            critic_payload.get("defects_count_by_category") or {}
-        )
+        defects_count_by_category = dict(critic_payload.get("defects_count_by_category") or {})
         quality_score = str(critic_payload.get("overall_quality_score") or "unknown")
 
         # ------- Pass 3: rewriter (skip if clean) -------
@@ -279,7 +277,7 @@ class CrossModelPipeline:
             )
             stricter_user = (
                 user
-                + "\n\nIMPORTANT: Return ONLY a JSON object. No prose, no markdown fences, no comments."
+                + "\n\nIMPORTANT: Return ONLY a JSON object. No prose, no markdown fences, no comments."  # noqa: E501
             )
             response2 = await self._critic_tracker.complete(
                 system=system,

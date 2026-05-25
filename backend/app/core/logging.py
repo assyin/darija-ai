@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 from typing import Any
@@ -15,10 +16,8 @@ def _force_utf8_streams() -> None:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is None:
             continue
-        try:
+        with contextlib.suppress(OSError, ValueError):
             reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (OSError, ValueError):
-            pass
 
 
 def configure_logging() -> None:

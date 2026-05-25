@@ -25,8 +25,7 @@ def compute_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal:
         logger.warning("ai.pricing.unknown_model", model=model)
         return Decimal("0")
     in_rate, out_rate = pricing
-    cost = (
-        Decimal(input_tokens) * in_rate
-        + Decimal(output_tokens) * out_rate
-    ) / Decimal(1_000_000)
+    cost = (Decimal(input_tokens) * in_rate + Decimal(output_tokens) * out_rate) / Decimal(
+        1_000_000
+    )
     return cost.quantize(Decimal("0.000001"))

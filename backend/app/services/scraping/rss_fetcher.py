@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from time import struct_time
 from typing import Any
 
@@ -41,9 +41,13 @@ def _struct_time_to_utc(t: struct_time | None) -> datetime | None:
         return None
     try:
         return datetime(
-            t.tm_year, t.tm_mon, t.tm_mday,
-            t.tm_hour, t.tm_min, t.tm_sec,
-            tzinfo=timezone.utc,
+            t.tm_year,
+            t.tm_mon,
+            t.tm_mday,
+            t.tm_hour,
+            t.tm_min,
+            t.tm_sec,
+            tzinfo=UTC,
         )
     except (ValueError, TypeError):
         return None

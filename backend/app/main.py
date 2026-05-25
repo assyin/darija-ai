@@ -6,16 +6,31 @@ from contextlib import asynccontextmanager
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
+from app.api.deps import public_rate_limit
+from app.api.v1.articles import admin_router as articles_admin_router
+from app.api.v1.articles import public_router as articles_public_router
+from app.api.v1.auth import router as auth_router
+from app.api.v1.settings import admin_router as settings_admin_router
+from app.api.v1.settings import router as settings_router
 from app.core.config import Settings, get_settings
 from app.core.db import check_db_health
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import check_redis_health
+
+
+def _check_prod_secrets(settings: Settings) -> None:
+    if not settings.is_prod:
+        return
+    if settings.admin_jwt_secret == "dev-only-change-me":  # noqa: S105
+        raise RuntimeError("Set ADMIN_JWT_SECRET to a strong random value in production")
+    if settings.admin_password.get_secret_value() == "changeme-in-prod":
+        raise RuntimeError("Set ADMIN_PASSWORD to a strong value in production")
 
 
 def _init_sentry(settings: Settings) -> None:
@@ -36,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging()
     _init_sentry(settings)
+    _check_prod_secrets(settings)
     logger = get_logger("app.lifespan")
     logger.info(
         "app.starting",
@@ -76,6 +92,7 @@ def create_app() -> FastAPI:
         call_next: Callable[[Request], Awaitable[JSONResponse]],
     ) -> JSONResponse:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             request_id=request_id,
@@ -101,6 +118,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": exc.error_code,
                     "message": exc.message,
+                    "request_id": getattr(request.state, "request_id", None),
                     "details": exc.details,
                 }
             },
@@ -128,6 +146,16 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
             "docs": "/docs",
         }
+
+    app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(settings_router, prefix="/api/v1", dependencies=[Depends(public_rate_limit)])
+    app.include_router(settings_admin_router, prefix="/api/v1")
+    app.include_router(articles_admin_router, prefix="/api/v1")
+    app.include_router(
+        articles_public_router,
+        prefix="/api/v1",
+        dependencies=[Depends(public_rate_limit)],
+    )
 
     return app
 
