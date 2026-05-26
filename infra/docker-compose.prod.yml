@@ -34,7 +34,7 @@ services:
   backend:
     image: ${BACKEND_IMAGE:?set in .env, e.g. ghcr.io/you/darija-backend:latest}
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
     image: ${BACKEND_IMAGE:?set in .env}
     restart: unless-stopped
     command: ["arq", "app.workers.settings.WorkerSettings"]
-    env_file: .env
+    env_file: ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +57,7 @@ services:
   frontend:
     image: ${FRONTEND_IMAGE:?set in .env, e.g. ghcr.io/you/darija-frontend:latest}
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     depends_on:
       - backend
     expose:
