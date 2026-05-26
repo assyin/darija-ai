@@ -1,0 +1,20 @@
+# Co-hosted Caddy — serves Titrit on :443 only (TLS-ALPN-01 cert), leaving the
+# host's existing Caddy in charge of :80 for the other project.
+{
+	# We don't own :80 here, so don't try to serve HTTP→HTTPS redirects on it.
+	auto_https disable_redirects
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Backend API (FastAPI) — only the /api/v1 prefix.
+	handle /api/v1/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else — Next.js (pages + its own /api/* route handlers).
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

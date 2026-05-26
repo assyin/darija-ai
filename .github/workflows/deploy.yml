@@ -66,9 +66,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
-            cd /opt/darija-ai
+            cd /opt/titrit-ai
             git pull --ff-only
-            docker compose -f infra/docker-compose.prod.yml --env-file .env pull
-            docker compose -f infra/docker-compose.prod.yml --env-file .env run --rm backend alembic upgrade head
-            docker compose -f infra/docker-compose.prod.yml --env-file .env up -d
+            docker compose -f infra/docker-compose.cohosted.yml --env-file .env pull
+            docker compose -f infra/docker-compose.cohosted.yml --env-file .env run --rm backend alembic upgrade head
+            docker compose -f infra/docker-compose.cohosted.yml --env-file .env up -d
             docker image prune -f
