@@ -26,12 +26,14 @@ export default async function PublicLayout({
 
   return (
     <NextIntlClientProvider>
-      <a href="#main" className="skip-link">
-        Aller au contenu
-      </a>
-      <Header settings={settings} />
-      <main id="main">{children}</main>
-      <Footer settings={settings} />
+      <div className="theme-public" data-locale={locale}>
+        <a href="#main" className="skip-link">
+          Aller au contenu
+        </a>
+        <Header settings={settings} />
+        <main id="main">{children}</main>
+        <Footer settings={settings} />
+      </div>
     </NextIntlClientProvider>
   );
 }

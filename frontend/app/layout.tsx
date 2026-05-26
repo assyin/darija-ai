@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Frank_Ruhl_Libre, Inter, Tajawal } from "next/font/google";
+import { Inter, Tajawal } from "next/font/google";
 import { headers } from "next/headers";
 
 import { Providers } from "@/components/providers";
@@ -16,13 +16,6 @@ const tajawal = Tajawal({
   variable: "--font-tajawal",
   subsets: ["arabic"],
   weight: ["400", "500", "700"],
-  display: "swap",
-});
-
-const frank = Frank_Ruhl_Libre({
-  variable: "--font-frank",
-  subsets: ["latin"],
-  weight: ["500", "700"],
   display: "swap",
 });
 
@@ -44,7 +37,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       dir={isRTL ? "rtl" : "ltr"}
-      className={`${inter.variable} ${tajawal.variable} ${frank.variable}`}
+      className={`${inter.variable} ${tajawal.variable}`}
     >
       <body className="min-h-screen bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
         <Providers>{children}</Providers>

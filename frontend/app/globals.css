@@ -4,7 +4,7 @@
 @theme inline {
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-arabic: var(--font-tajawal), "Tajawal", system-ui, sans-serif;
-  --font-display: var(--font-frank), Georgia, serif;
+  --font-display: var(--font-inter), system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
   /* === Moroccan Modern Tech palette === */
@@ -66,12 +66,85 @@ html[dir="ltr"] body {
   font-family: var(--font-sans);
 }
 
+/* ===========================================================
+   Dark "AI premium" theme — PUBLIC surface ONLY.
+   Scoped to .theme-public so the admin keeps its legacy light theme.
+   The 195 var(--color-*) references in public components re-skin
+   automatically (no @theme value change → admin untouched).
+   AR/Darija = warm & vibrant (base). FR = cooler premium SaaS via
+   .theme-public[data-locale="fr"]. One system, tokens only.
+   =========================================================== */
+.theme-public {
+  /* Surfaces (near-black navy) */
+  --color-bg: #060914;
+  --color-bg-elevated: #0d1324;
+  --surface-2: #111a2e;
+  --color-fg: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-muted-foreground: #94a3b8;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-input: rgba(255, 255, 255, 0.10);
+
+  /* Brand — violet primary is a cross-locale INVARIANT */
+  --color-primary: #8b5cf6;
+  --color-primary-dark: #7c3aed;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #3b82f6;
+  --color-accent: #f59e0b;        /* amber (warm MENA accent) */
+  --color-accent-dark: #d97706;
+  --color-accent-foreground: #1a1206;
+  --color-cyan: #22d3ee;
+
+  /* Status */
+  --color-success: #22c55e;
+  --color-info: #3b82f6;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Effects */
+  --gradient-hero: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 50%, #ec4899 100%);
+  --gradient-cta: linear-gradient(120deg, #7c3aed, #4f46e5);
+  --glow-primary: 0 0 40px -8px rgba(139, 92, 246, 0.5);
+  --shadow-card: 0 10px 30px -14px rgba(0, 0, 0, 0.7);
+
+  /* Vertical rhythm / intensity */
+  --section-gap: 6rem;
+
+  /* Paint the public surface (covers the legacy-light body behind) */
+  background: var(--color-bg);
+  color: var(--color-fg);
+  min-height: 100dvh;
+}
+
+/* French = premium SaaS: indigo/blue dominant, less saturated, airier,
+   reduced glow — BUT keep a subtle warm amber accent (MENA warmth). */
+.theme-public[data-locale="fr"] {
+  --color-secondary: #6366f1;     /* indigo dominant */
+  --color-accent: #e69b2e;        /* amber kept, slightly muted, used sparingly */
+  --gradient-hero: linear-gradient(135deg, #8b5cf6 0%, #6366f1 45%, #3b82f6 100%);
+  --gradient-cta: linear-gradient(120deg, #6366f1, #3b82f6);
+  --glow-primary: 0 0 26px -12px rgba(99, 102, 241, 0.32);
+  --shadow-card: 0 8px 24px -16px rgba(0, 0, 0, 0.55);
+  --section-gap: 7rem;
+}
+
+/* Dark-surface adjustments for public decorative utilities */
+.theme-public .zellige-divider::after {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28' fill='none' stroke='%238b5cf6' stroke-width='1' opacity='0.22'><polygon points='14,2 17,11 26,11 19,17 22,26 14,21 6,26 9,17 2,11 11,11'/></svg>");
+}
+.theme-public .zellige-overlay {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80' fill='none' stroke='%238b5cf6' stroke-width='0.6' opacity='0.05'><polygon points='40,4 47,30 73,30 51,46 60,72 40,57 20,72 29,46 7,30 33,30'/></svg>");
+}
+.theme-public .prose-rtl :where(bdi) {
+  background-color: rgba(139, 92, 246, 0.12);
+}
+
 /* === Public utility classes === */
 
 .font-display {
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .font-arabic {
