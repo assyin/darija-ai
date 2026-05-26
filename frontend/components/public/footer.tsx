@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
+import { Brand } from "@/components/public/brand";
 import { NewsletterSignup } from "@/components/public/newsletter-signup";
 import {
   InstagramIcon,
@@ -8,6 +9,7 @@ import {
   TiktokIcon,
   XIcon,
 } from "@/components/public/social-icons";
+import { NAV_LINKS } from "@/lib/nav";
 import type { SiteSettings } from "@/lib/use-site-settings";
 
 interface FooterProps {
@@ -33,7 +35,7 @@ export function Footer({ settings }: FooterProps) {
       <div className="container-wide py-12">
         <div className="grid gap-10 md:grid-cols-4">
           <section className="md:col-span-1">
-            <p className="font-display text-lg">{businessName}</p>
+            <Brand name={businessName} className="text-lg" />
             {tagline && (
               <p className="mt-3 text-sm text-[var(--color-muted-foreground)]">
                 {tagline}
@@ -46,11 +48,16 @@ export function Footer({ settings }: FooterProps) {
               {t("links_title")}
             </h4>
             <ul className="mt-4 space-y-2 text-sm">
-              <li><Link href="/" className="hover:text-[var(--color-primary)]">{tNav("home")}</Link></li>
-              <li><Link href="/articles" className="hover:text-[var(--color-primary)]">{tNav("articles")}</Link></li>
-              <li><Link href="/services" className="hover:text-[var(--color-primary)]">{tNav("services")}</Link></li>
-              <li><Link href="/about" className="hover:text-[var(--color-primary)]">{tNav("about")}</Link></li>
-              <li><Link href="/contact" className="hover:text-[var(--color-primary)]">{tNav("contact")}</Link></li>
+              {NAV_LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-[var(--color-muted-foreground)] transition-colors hover:text-[var(--color-primary)]"
+                  >
+                    {tNav(l.key)}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </section>
 
