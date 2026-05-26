@@ -1,0 +1,89 @@
+# Co-hosted stack — runs alongside an existing project on the same host.
+# Differences vs docker-compose.prod.yml:
+#   - Caddy binds :443 ONLY (the host's existing proxy keeps :80). Certs are
+#     issued via TLS-ALPN-01 on :443, so we never touch the other project.
+#   - postgres/redis/backend/frontend are internal to the compose network only.
+# Bring up:  docker compose -f infra/docker-compose.cohosted.yml --env-file .env up -d
+# Migrate:   docker compose -f infra/docker-compose.cohosted.yml run --rm backend alembic upgrade head
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-darija}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-darija_ai}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darija} -d ${POSTGRES_DB:-darija_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE:?set in .env}
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  worker:
+    image: ${BACKEND_IMAGE:?set in .env}
+    restart: unless-stopped
+    command: ["arq", "app.workers.settings.WorkerSettings"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?set in .env}
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # :443 only — the host's existing Caddy keeps :80 for the other project.
+    ports:
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env}
+    volumes:
+      - ./Caddyfile.cohosted:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
