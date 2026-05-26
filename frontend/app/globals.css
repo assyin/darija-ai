@@ -114,6 +114,16 @@ html[dir="ltr"] body {
   background: var(--color-bg);
   color: var(--color-fg);
   min-height: 100dvh;
+  /* Safety net: never allow horizontal scroll on mobile from glows/RTL. */
+  overflow-x: clip;
+}
+
+/* Consistent keyboard focus for public links (buttons/inputs handle their own
+   focus rings). One rule covers nav, footer, cards, breadcrumb, etc. */
+.theme-public a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* French = premium SaaS: indigo/blue dominant, less saturated, airier,
