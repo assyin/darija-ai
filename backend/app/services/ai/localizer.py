@@ -94,7 +94,7 @@ class Localizer:
         provider: LLMProvider,
         redis_client: Redis | None = None,
         cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
-        prompt_version: str = "v1",
+        prompt_version: str = "v2",
         model: str = PRODUCTION_MODEL,
         bidi_wrap: bool = True,
     ):
