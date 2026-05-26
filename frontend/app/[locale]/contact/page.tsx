@@ -18,13 +18,8 @@ export default async function ContactPage({
   return (
     <div className="container-wide py-16">
       <header className="mx-auto max-w-2xl text-center">
-        <h1 dir="rtl" className="font-arabic-display text-4xl md:text-5xl">
-          {t("page_title")}
-        </h1>
-        <p
-          dir="rtl"
-          className="font-arabic mt-4 text-lg text-[var(--color-muted-foreground)]"
-        >
+        <h1 className="text-4xl font-bold tracking-tight md:text-5xl">{t("page_title")}</h1>
+        <p className="mt-4 text-lg text-[var(--color-muted-foreground)]">
           {t("page_subtitle")}
         </p>
       </header>

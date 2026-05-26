@@ -17,8 +17,8 @@ export function ContactDirect({ settings }: ContactDirectProps) {
   const calendly = settings.calendly_url;
 
   return (
-    <aside dir="rtl" className="space-y-3">
-      <p className="font-arabic text-sm font-medium uppercase tracking-wider text-[var(--color-muted)]">
+    <aside className="space-y-3">
+      <p className="text-sm font-medium uppercase tracking-wider text-[var(--color-muted)]">
         {t("or_directly")}
       </p>
       {whatsappClean && (
@@ -29,7 +29,7 @@ export function ContactDirect({ settings }: ContactDirectProps) {
           className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-5 py-4 transition-all hover:border-emerald-600 hover:shadow-sm"
         >
           <div>
-            <p className="font-arabic font-semibold">{t("via_whatsapp")}</p>
+            <p className="font-semibold">{t("via_whatsapp")}</p>
             <p
               dir="ltr"
               className="text-sm text-[var(--color-muted-foreground)]"
@@ -46,7 +46,7 @@ export function ContactDirect({ settings }: ContactDirectProps) {
           className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-5 py-4 transition-all hover:border-[var(--color-primary)] hover:shadow-sm"
         >
           <div>
-            <p className="font-arabic font-semibold">{t("via_email")}</p>
+            <p className="font-semibold">{t("via_email")}</p>
             <p dir="ltr" className="text-sm text-[var(--color-muted-foreground)]">
               {email}
             </p>
@@ -62,7 +62,7 @@ export function ContactDirect({ settings }: ContactDirectProps) {
           className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-5 py-4 transition-all hover:border-[var(--color-accent)] hover:shadow-sm"
         >
           <div>
-            <p className="font-arabic font-semibold">{t("via_calendly")}</p>
+            <p className="font-semibold">{t("via_calendly")}</p>
             <p
               dir="ltr"
               className="truncate text-sm text-[var(--color-muted-foreground)]"
