@@ -6,6 +6,10 @@
 .doppler/
 *.key
 *.pem
+hetzner.txt
+*hetzner*
+id_ed25519*
+id_rsa*
 
 # Python
 __pycache__/
