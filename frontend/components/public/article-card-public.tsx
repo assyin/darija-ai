@@ -26,7 +26,7 @@ export function ArticleCardPublic({ article, variant = "compact" }: ArticleCardP
       href={`/articles/${article.slug}`}
       className={cn(
         "group flex flex-col overflow-hidden rounded-lg bg-[var(--color-bg-elevated)] border border-[var(--color-border)] transition-all duration-200",
-        "hover:-translate-y-1 hover:border-[var(--color-accent)] hover:shadow-md",
+        "hover:-translate-y-1 hover:border-[var(--color-primary)]/50 hover:shadow-[var(--shadow-card)]",
       )}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-[var(--color-bg)]">

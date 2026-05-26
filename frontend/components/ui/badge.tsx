@@ -20,7 +20,7 @@ const badgeVariants = cva(
           "border-transparent bg-amber-100 text-amber-900",
         muted:
           "border-transparent bg-[var(--color-muted)] text-[var(--color-muted-foreground)]",
-        outline: "text-[var(--color-foreground)] border-[var(--color-border)]",
+        outline: "text-[var(--color-fg)] border-[var(--color-border)]",
       },
     },
     defaultVariants: { variant: "default" },

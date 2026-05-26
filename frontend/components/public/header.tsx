@@ -2,9 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Menu, X } from "lucide-react";
 
+import { Brand } from "@/components/public/brand";
+import { NAV_LINKS, stripLocale } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import type { SiteSettings } from "@/lib/use-site-settings";
 
@@ -14,32 +17,33 @@ interface HeaderProps {
 
 export function Header({ settings }: HeaderProps) {
   const t = useTranslations("nav");
+  const pathname = usePathname();
+  const current = stripLocale(pathname ?? "/");
   const [open, setOpen] = React.useState(false);
   const businessName = settings.business_name || "DarijaAI";
 
-  const links = [
-    { href: "/", label: t("home") },
-    { href: "/articles", label: t("articles") },
-    { href: "/services", label: t("services") },
-    { href: "/about", label: t("about") },
-    { href: "/contact", label: t("contact") },
-  ];
+  const isActive = (href: string) =>
+    href === "/" ? current === "/" : current === href || current.startsWith(`${href}/`);
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85 backdrop-blur-md">
       <div className="container-wide flex h-16 items-center justify-between">
         <Link href="/" className="group flex items-baseline gap-0">
-          <Logo name={businessName} />
+          <Brand name={businessName} />
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
-          {links.map((l) => (
+          {NAV_LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm font-medium text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
+              aria-current={isActive(l.href) ? "page" : undefined}
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-[var(--color-primary)]",
+                isActive(l.href) ? "text-[var(--color-primary)]" : "text-[var(--color-fg)]",
+              )}
             >
-              {l.label}
+              {t(l.key)}
             </Link>
           ))}
         </nav>
@@ -57,7 +61,7 @@ export function Header({ settings }: HeaderProps) {
       {open && (
         <div className="fixed inset-0 z-50 bg-[var(--color-bg)] md:hidden">
           <div className="flex h-16 items-center justify-between px-6 border-b border-[var(--color-border)]">
-            <Logo name={businessName} />
+            <Brand name={businessName} />
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -68,39 +72,23 @@ export function Header({ settings }: HeaderProps) {
             </button>
           </div>
           <nav className="flex flex-col gap-1 p-6">
-            {links.map((l) => (
+            {NAV_LINKS.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
                 onClick={() => setOpen(false)}
-                className="rounded-md px-4 py-3 text-lg font-medium hover:bg-[var(--color-bg-elevated)]"
+                aria-current={isActive(l.href) ? "page" : undefined}
+                className={cn(
+                  "rounded-md px-4 py-3 text-lg font-medium hover:bg-[var(--color-bg-elevated)]",
+                  isActive(l.href) && "text-[var(--color-primary)]",
+                )}
               >
-                {l.label}
+                {t(l.key)}
               </Link>
             ))}
           </nav>
         </div>
       )}
     </header>
-  );
-}
-
-/**
- * Typographic logo. Renders the business name with a subtle accent
- * on the first character, and primary color on the "AI" suffix when present.
- */
-function Logo({ name, className }: { name: string; className?: string }) {
-  const aiMatch = /AI$/i.test(name);
-  const head = aiMatch ? name.slice(0, -2) : name;
-  const tail = aiMatch ? name.slice(-2) : "";
-  const firstChar = head.charAt(0);
-  const restHead = head.slice(1);
-
-  return (
-    <span className={cn("font-display text-xl tracking-tight", className)}>
-      <span className="text-[var(--color-accent)]">{firstChar}</span>
-      <span className="text-[var(--color-fg)]">{restHead}</span>
-      {tail && <span className="text-[var(--color-primary)]">{tail}</span>}
-    </span>
   );
 }

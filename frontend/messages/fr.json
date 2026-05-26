@@ -20,7 +20,29 @@
     "newsletter_placeholder": "Votre email",
     "newsletter_cta": "S'abonner",
     "newsletter_success": "C'est fait — à très vite dans votre boîte.",
-    "newsletter_error": "Une erreur est survenue, réessayez"
+    "newsletter_error": "Une erreur est survenue, réessayez",
+    "services_title": "Nos services IA",
+    "stats": {
+      "articles_label": "articles",
+      "lang_value": "100%",
+      "lang_label": "en darija",
+      "freq_value": "Quotidien",
+      "freq_label": "mises à jour",
+      "free_value": "Gratuit",
+      "free_label": "pour tous"
+    },
+    "testimonials_title": "Ils en parlent",
+    "testimonials": {
+      "t1_quote": "Enfin une plateforme qui explique l'IA clairement. J'apprends quelque chose chaque semaine.",
+      "t1_name": "Amine",
+      "t1_role": "Développeur",
+      "t2_quote": "Du contenu concret et clair, sans jargon. Je l'ai recommandé autour de moi.",
+      "t2_name": "Sara",
+      "t2_role": "Ingénieure",
+      "t3_quote": "J'aime la façon dont ils relient la tech mondiale à notre réalité au Maroc.",
+      "t3_name": "Youssef",
+      "t3_role": "Entrepreneur"
+    }
   },
   "article": {
     "reading_time": "{minutes} min de lecture",

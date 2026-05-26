@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { Clock } from "lucide-react";
+import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
 
+import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { ArticleCTA } from "@/components/public/article-cta";
 import { RtlContent } from "@/components/shared/rtl-content";
 import { bdiHtml, stripBdi } from "@/lib/bidi";
@@ -102,40 +103,28 @@ export default async function ArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <article>
-        {/* Breadcrumb */}
+      <article className="pb-16">
+        {/* Breadcrumb — chrome, inherits locale direction/font */}
         <div className="container-wide pt-8">
-          <nav
-            dir="rtl"
-            className="font-arabic text-sm text-[var(--color-muted-foreground)]"
-          >
-            <Link href="/" className="hover:text-[var(--color-primary)]">{tNav("home")}</Link>
-            {" › "}
-            <Link href="/articles" className="hover:text-[var(--color-primary)]">{tNav("articles")}</Link>
+          <nav className="text-sm text-[var(--color-muted-foreground)]">
+            <Link href="/" className="hover:text-[var(--color-primary)]">
+              {tNav("home")}
+            </Link>
+            <span className="mx-2 opacity-50">/</span>
+            <Link href="/articles" className="hover:text-[var(--color-primary)]">
+              {tNav("articles")}
+            </Link>
           </nav>
         </div>
 
-        {/* Header */}
-        <header className="container-narrow py-10 text-center">
-          {article.categories[0] && (
-            <span className="inline-block rounded-full bg-[var(--color-accent)]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-accent-dark)]">
-              {article.categories[0]}
-            </span>
-          )}
-          <h1
-            dir="rtl"
-            className="font-arabic-display mt-6 text-3xl leading-tight md:text-5xl"
-            dangerouslySetInnerHTML={{ __html: bdiHtml(article.title_darija) }}
-          />
-          <p
-            dir="rtl"
-            className="font-arabic mt-6 text-lg text-[var(--color-muted-foreground)] md:text-xl"
-            dangerouslySetInnerHTML={{ __html: bdiHtml(article.excerpt_darija) }}
-          />
-          <div
-            dir="rtl"
-            className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-[var(--color-muted)]"
-          >
+        {/* Header — centered to avoid RTL/LTR alignment clash */}
+        <header className="container-narrow py-8 text-center md:py-10">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-[var(--color-muted-foreground)]">
+            {article.categories[0] && (
+              <span className="rounded-full border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-primary)]">
+                {article.categories[0]}
+              </span>
+            )}
             {article.published_at && (
               <span>
                 {t("published_on")}{" "}
@@ -147,25 +136,45 @@ export default async function ArticlePage({
               </span>
             )}
             {article.reading_time_minutes != null && (
-              <span className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
                 {t("reading_time", { minutes: article.reading_time_minutes })}
               </span>
             )}
           </div>
+
+          <h1
+            dir="rtl"
+            className="font-arabic-display mt-6 text-3xl leading-tight md:text-5xl"
+            dangerouslySetInnerHTML={{ __html: bdiHtml(article.title_darija) }}
+          />
+          <p
+            dir="rtl"
+            className="font-arabic mx-auto mt-5 max-w-2xl text-lg text-[var(--color-muted-foreground)] md:text-xl"
+            dangerouslySetInnerHTML={{ __html: bdiHtml(article.excerpt_darija) }}
+          />
         </header>
 
-        {/* Hero image */}
+        {/* Hero image — polished, with a graceful placeholder behind it */}
         {article.hero_image_url && (
           <div className="container-wide">
-            <div className="mx-auto aspect-video w-full max-w-4xl overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+            <figure className="relative mx-auto aspect-video w-full max-w-4xl overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-15"
+                style={{ background: "var(--gradient-hero)" }}
+              />
+              <ImageIcon
+                aria-hidden
+                className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 text-[var(--color-muted)]"
+              />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={article.hero_image_url}
                 alt={stripBdi(article.hero_image_alt ?? article.title_darija)}
-                className="h-full w-full object-cover"
+                className="relative h-full w-full object-cover"
               />
-            </div>
+            </figure>
           </div>
         )}
 
@@ -181,51 +190,29 @@ export default async function ArticlePage({
 
         {/* Related */}
         {related.length > 0 && (
-          <section className="container-wide py-16">
-            <h2
-              dir="rtl"
-              className="font-arabic-display mb-8 text-2xl md:text-3xl"
-            >
+          <section className="container-wide py-12">
+            <h2 className="mb-8 text-2xl font-bold tracking-tight md:text-3xl">
               {t("related_articles")}
             </h2>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {related.map((r) => (
-                <RelatedCard key={r.id} article={r} />
+                <ArticleCardPublic key={r.id} article={r} variant="compact" />
               ))}
             </div>
           </section>
         )}
 
-        <div className="container-wide pb-16">
+        {/* Back to articles */}
+        <div className="container-wide">
           <Link
             href="/articles"
-            dir="rtl"
-            className="font-arabic text-sm font-medium text-[var(--color-primary)] hover:text-[var(--color-accent-dark)]"
+            className="inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] transition-colors hover:text-[var(--color-primary-dark)]"
           >
+            <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
             {t("back_to_articles")}
           </Link>
         </div>
       </article>
     </>
-  );
-}
-
-function RelatedCard({ article }: { article: ArticlePublic }) {
-  return (
-    <Link
-      href={`/articles/${article.slug}`}
-      className="group block rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-5 transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-md"
-    >
-      <h3
-        dir="rtl"
-        className="font-arabic-display line-clamp-2 text-lg leading-snug"
-        dangerouslySetInnerHTML={{ __html: bdiHtml(article.title_darija) }}
-      />
-      <p
-        dir="rtl"
-        className="font-arabic mt-3 line-clamp-2 text-sm text-[var(--color-muted-foreground)]"
-        dangerouslySetInnerHTML={{ __html: bdiHtml(article.excerpt_darija) }}
-      />
-    </Link>
   );
 }

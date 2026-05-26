@@ -39,7 +39,7 @@ export function ArticleCTA({ settings }: ArticleCTAProps) {
 
   return (
     <aside
-      className="my-16 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-bg-elevated)] p-8 shadow-sm"
+      className="my-16 overflow-hidden rounded-xl border border-[var(--color-primary)]/25 bg-[var(--color-bg-elevated)] p-8 shadow-[var(--shadow-card)]"
       dir="rtl"
     >
       <div className="prose-rtl max-w-none">

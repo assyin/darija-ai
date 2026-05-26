@@ -20,7 +20,29 @@
     "newsletter_placeholder": "البريد الإلكتروني ديالك",
     "newsletter_cta": "اشترك",
     "newsletter_success": "تم! غادي تتوصل بأخبارنا.",
-    "newsletter_error": "وقع خطأ، عاود المحاولة"
+    "newsletter_error": "وقع خطأ، عاود المحاولة",
+    "services_title": "خدمات الذكاء الاصطناعي",
+    "stats": {
+      "articles_label": "مقال",
+      "lang_value": "100%",
+      "lang_label": "بالدارجة",
+      "freq_value": "يومي",
+      "freq_label": "تحديث",
+      "free_value": "مجاني",
+      "free_label": "للجميع"
+    },
+    "testimonials_title": "شنو كيقولو علينا",
+    "testimonials": {
+      "t1_quote": "أخيرا منصة كتشرح AI بالدارجة بطريقة مفهومة. كنتعلم بزاف كل أسبوع.",
+      "t1_name": "أمين",
+      "t1_role": "مطور",
+      "t2_quote": "المحتوى ديالهم عملي وواضح، بلا تعقيد. نصحت بيه أصحابي.",
+      "t2_name": "سارة",
+      "t2_role": "مهندسة",
+      "t3_quote": "كنحب كيفاش كيربطو التكنولوجيا العالمية بالواقع ديالنا فالمغرب.",
+      "t3_name": "يوسف",
+      "t3_role": "رائد أعمال"
+    }
   },
   "article": {
     "reading_time": "{minutes} دقائق قراءة",

@@ -18,60 +18,34 @@ export default async function AboutPage({
   return (
     <div className="container-narrow py-16">
       <header>
-        <h1 dir="rtl" className="font-arabic-display text-4xl md:text-5xl">
-          {t("page_title")}
-        </h1>
-        <p
-          dir="rtl"
-          className="font-arabic mt-4 text-lg text-[var(--color-muted-foreground)]"
-        >
-          {t("intro")}
-        </p>
+        <h1 className="text-4xl font-bold tracking-tight md:text-5xl">{t("page_title")}</h1>
+        <p className="mt-4 text-lg text-[var(--color-muted-foreground)]">{t("intro")}</p>
       </header>
 
       <section className="mt-12">
-        <h2 dir="rtl" className="font-arabic-display text-2xl">
-          {t("mission_title")}
-        </h2>
-        <p
-          dir="rtl"
-          className="font-arabic mt-4 text-base leading-relaxed text-[var(--color-fg)]/90"
-        >
+        <h2 className="text-2xl font-bold tracking-tight">{t("mission_title")}</h2>
+        <p className="mt-4 text-base leading-relaxed text-[var(--color-fg)]/90">
           {t("mission_text")}
         </p>
       </section>
 
       <section className="mt-12">
-        <h2 dir="rtl" className="font-arabic-display text-2xl">
-          {t("why_darija_title")}
-        </h2>
-        <p
-          dir="rtl"
-          className="font-arabic mt-4 text-base leading-relaxed text-[var(--color-fg)]/90"
-        >
+        <h2 className="text-2xl font-bold tracking-tight">{t("why_darija_title")}</h2>
+        <p className="mt-4 text-base leading-relaxed text-[var(--color-fg)]/90">
           {t("why_darija_text")}
         </p>
       </section>
 
       {ownerName && (
         <section className="mt-12 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-6">
-          <p
-            dir="rtl"
-            className="font-arabic text-sm uppercase tracking-wider text-[var(--color-muted)]"
-          >
+          <p className="text-sm uppercase tracking-wider text-[var(--color-muted)]">
             {t("founder_intro")}
           </p>
-          <p
-            dir="rtl"
-            className="font-arabic-display mt-2 text-2xl"
-          >
+          <p dir="auto" className="mt-2 text-2xl font-bold tracking-tight">
             {ownerName}
           </p>
           {ownerRole && (
-            <p
-              dir="rtl"
-              className="font-arabic mt-1 text-sm text-[var(--color-muted-foreground)]"
-            >
+            <p dir="auto" className="mt-1 text-sm text-[var(--color-muted-foreground)]">
               {ownerRole}
             </p>
           )}

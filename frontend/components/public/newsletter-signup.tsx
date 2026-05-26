@@ -48,7 +48,7 @@ export function NewsletterSignup() {
         <button
           type="submit"
           disabled={state === "loading"}
-          className="inline-flex items-center justify-center rounded-md bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary-dark)] disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-md bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[var(--color-primary-dark)] hover:shadow-[var(--glow-primary)] disabled:opacity-60"
         >
           {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("newsletter_cta")}
         </button>

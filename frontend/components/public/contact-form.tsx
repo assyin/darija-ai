@@ -31,66 +31,53 @@ export function ContactForm() {
   return (
     <form
       onSubmit={onSubmit}
-      dir="rtl"
       className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-6"
     >
       <div className="space-y-4">
         <div>
-          <label className="font-arabic block text-sm font-medium">
-            {t("form_name")}
-          </label>
+          <label className="block text-sm font-medium">{t("form_name")}</label>
           <input
             type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="font-arabic mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
+            className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
           />
         </div>
         <div>
-          <label className="font-arabic block text-sm font-medium">
-            {t("form_email")}
-          </label>
+          <label className="block text-sm font-medium">{t("form_email")}</label>
           <input
             type="email"
             required
             dir="auto"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
+            className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
           />
         </div>
         <div>
-          <label className="font-arabic block text-sm font-medium">
-            {t("form_message")}
-          </label>
+          <label className="block text-sm font-medium">{t("form_message")}</label>
           <textarea
             required
             rows={6}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="font-arabic mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
+            className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
           />
         </div>
         <button
           type="submit"
           disabled={state === "loading"}
-          className="font-arabic inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-dark)] disabled:opacity-60"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-primary)] px-5 py-3 text-sm font-semibold text-white transition-all hover:bg-[var(--color-primary-dark)] hover:shadow-[var(--glow-primary)] disabled:opacity-60"
         >
-          {state === "loading" ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : null}
+          {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {t("form_submit")}
         </button>
         {state === "ok" && (
-          <p className="font-arabic text-sm text-[var(--color-success)]">
-            {t("form_success")}
-          </p>
+          <p className="text-sm text-[var(--color-success)]">{t("form_success")}</p>
         )}
         {state === "error" && (
-          <p className="font-arabic text-sm text-[var(--color-danger)]">
-            {t("form_error")}
-          </p>
+          <p className="text-sm text-[var(--color-danger)]">{t("form_error")}</p>
         )}
       </div>
     </form>
