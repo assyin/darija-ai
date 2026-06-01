@@ -7,7 +7,6 @@ import { CtaBanner } from "@/components/public/home/cta-banner";
 import { Hero } from "@/components/public/home/hero";
 import { ServicesPreview } from "@/components/public/home/services-preview";
 import { StatStrip } from "@/components/public/home/stat-strip";
-import { Testimonials } from "@/components/public/home/testimonials";
 import { publicApi } from "@/lib/api-client";
 import { getSiteSettings } from "@/lib/use-site-settings";
 
@@ -17,7 +16,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const s = await getSiteSettings();
   const title = s.seo_default_title || s.business_name || "DarijaAI";
   const description = s.seo_default_description || "";
-  const ogImage = s.business_logo_url;
+  // Prefer the configured business logo; fall back to the bundled brand mark
+  // so social previews are never imageless.
+  const ogImage = s.business_logo_url || `${SITE_BASE}/logo-mark.png`;
+  const ogImageIsBrandMark = !s.business_logo_url;
   return {
     title,
     description,
@@ -28,13 +30,17 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       url: SITE_BASE,
-      images: ogImage ? [{ url: ogImage, width: 1200, height: 630 }] : [],
+      images: [
+        ogImageIsBrandMark
+          ? { url: ogImage, width: 1024, height: 1024 }
+          : { url: ogImage, width: 1200, height: 630 },
+      ],
     },
     twitter: {
-      card: "summary_large_image",
+      card: ogImageIsBrandMark ? "summary" : "summary_large_image",
       title,
       description,
-      images: ogImage ? [ogImage] : [],
+      images: [ogImage],
     },
   };
 }
@@ -54,11 +60,13 @@ export default async function HomePage({
   const recent = articles.slice(3, 9);
 
   return (
-    <div className="space-y-16 py-10 md:space-y-24 md:py-14">
-      <Hero />
-
+    <div>
+      {/* Hero + glass stat strip read as one cinematic block; the strip floats
+          over the lower hero via its own negative margin. */}
+      <Hero locale={locale} />
       <StatStrip articlesCount={articles.length} />
 
+      <div className="space-y-16 pt-20 md:space-y-24 md:pt-28">
       {featured.length > 0 && (
         <section className="container-wide">
           <h2 className="mb-8 text-3xl font-bold tracking-tight md:text-4xl">
@@ -95,9 +103,8 @@ export default async function HomePage({
 
       <ServicesPreview />
 
-      <Testimonials />
-
       <CtaBanner />
+      </div>
     </div>
   );
 }

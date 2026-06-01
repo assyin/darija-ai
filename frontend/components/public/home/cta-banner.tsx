@@ -1,54 +1,90 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Bot } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { NewsletterSignup } from "@/components/public/newsletter-signup";
 import { Button } from "@/components/ui/button";
 
 /**
- * Gradient CTA banner (services-oriented) + reused Newsletter block.
- * The mascot is a placeholder icon until a bespoke asset is generated.
- * Gradient reads --gradient-cta (cooler in FR, warmer in AR).
+ * Closing CTA banner — full-bleed Marrakech-dawn asset (user-curated).
+ * Composition mirrors the hero treatment: image as the entire scene,
+ * minimal scrim on the start side for legibility, content overlaid.
+ *
+ * The newsletter signup is the primary CTA (audience building); a small
+ * outline button links to /services for the commercial path.
  */
 export function CtaBanner() {
-  const t = useTranslations("services");
+  const tHome = useTranslations("home");
+  const tServices = useTranslations("services");
 
   return (
-    <section className="container-wide">
+    <section id="cta-banner" className="container-wide scroll-mt-24">
       <div
-        className="relative overflow-hidden rounded-3xl p-8 md:p-12"
-        style={{ background: "var(--gradient-cta)" }}
+        dir="ltr"
+        className="relative isolate flex min-h-[420px] items-center overflow-hidden rounded-3xl bg-[#0a0418] md:min-h-[480px] lg:min-h-[520px]"
       >
+        {/* Scene */}
+        <div aria-hidden className="absolute inset-0 -z-20">
+          <Image
+            src="/cta/dawn-medina.png"
+            alt=""
+            fill
+            sizes="(min-width: 1280px) 1100px, 100vw"
+            className="object-cover object-center"
+          />
+        </div>
+
+        {/* Soft scrim only where the text lives — left side */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -end-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-2xl"
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 70% at 22% 50%, rgba(10,4,24,0.55) 0%, rgba(10,4,24,0.25) 45%, transparent 75%)," +
+              "linear-gradient(to top, rgba(10,4,24,0.35) 0%, transparent 50%)",
+          }}
         />
-        <div className="relative grid items-center gap-8 md:grid-cols-[1fr_auto]">
-          <div className="text-center text-white md:text-start">
-            <h2 className="text-2xl font-bold tracking-tight md:text-3xl">{t("cta_title")}</h2>
-            <p className="mt-3 max-w-xl text-white/85">{t("cta_subtitle")}</p>
-            <div className="mt-6 flex justify-center md:justify-start">
+
+        {/* Content */}
+        <div className="relative w-full px-8 py-12 md:px-12 md:py-14 lg:px-16 lg:py-16">
+          <div className="max-w-md lg:max-w-lg" style={{ textAlign: "left" }}>
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.32em] text-fuchsia-300/90"
+              style={{ direction: "rtl", textAlign: "left" }}
+            >
+              {tHome("newsletter_title")}
+            </p>
+            <h2
+              className="mt-4 text-3xl font-extrabold leading-[1.1] tracking-tight text-white md:text-4xl lg:text-5xl"
+              style={{ direction: "rtl", textAlign: "left" }}
+            >
+              {tHome("newsletter_subtitle")}
+            </h2>
+
+            <div className="mt-7">
+              <NewsletterSignup variant="dark" />
+            </div>
+
+            <div className="mt-6 flex items-center gap-3 text-sm text-white/70">
+              <span className="hidden sm:inline">{tServices("cta_subtitle")}</span>
               <Button
                 asChild
-                size="lg"
-                className="bg-white text-[var(--color-primary)] hover:bg-white/90 hover:shadow-none"
+                size="sm"
+                variant="outline"
+                className="border-white/25 bg-white/5 text-white backdrop-blur-sm hover:border-white/40 hover:bg-white/10"
               >
-                <Link href="/contact">{t("cta_button")}</Link>
+                <Link
+                  href="/services"
+                  className="inline-flex items-center gap-2"
+                >
+                  <span>{tServices("cta_button")}</span>
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+                </Link>
               </Button>
             </div>
           </div>
-
-          <div
-            aria-hidden
-            className="hidden h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-white/10 backdrop-blur md:flex"
-          >
-            <Bot className="h-14 w-14 text-white" />
-          </div>
         </div>
-      </div>
-
-      <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-6">
-        <NewsletterSignup />
       </div>
     </section>
   );

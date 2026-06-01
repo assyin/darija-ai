@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { Brand } from "@/components/public/brand";
+import { LogoMark } from "@/components/public/logo-mark";
 import { NewsletterSignup } from "@/components/public/newsletter-signup";
 import {
   InstagramIcon,
@@ -16,8 +17,12 @@ interface FooterProps {
   settings: SiteSettings;
 }
 
+/** Public site footer — dark glass aesthetic that closes the page on the same
+ *  visual key as the hero / CTA / cards. Subtle inset top glow ties it back
+ *  to the brand palette. */
 export function Footer({ settings }: FooterProps) {
   const t = useTranslations("footer");
+  const tHome = useTranslations("home");
   const tNav = useTranslations("nav");
   const businessName = settings.business_name || "DarijaAI";
   const tagline = settings.business_tagline_darija || "";
@@ -31,28 +36,41 @@ export function Footer({ settings }: FooterProps) {
   ].filter((s) => s.url && s.url.trim().length > 0);
 
   return (
-    <footer className="border-t border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
-      <div className="container-wide py-12">
-        <div className="grid gap-10 md:grid-cols-4">
+    <footer className="relative isolate border-t border-white/10 bg-[#0a0418] text-white">
+      {/* Subtle top gradient — echoes the CTA glow without bleeding into content */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-400/40 to-transparent"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-40 bg-gradient-to-b from-fuchsia-500/[0.06] to-transparent"
+      />
+
+      <div className="container-wide py-14">
+        <div className="grid gap-12 md:grid-cols-4 md:gap-8">
           <section className="md:col-span-1">
-            <Brand name={businessName} className="text-lg" />
+            <div className="flex items-center gap-2.5">
+              <LogoMark size={32} />
+              <Brand name={businessName} className="text-lg" />
+            </div>
             {tagline && (
-              <p className="mt-3 text-sm text-[var(--color-muted-foreground)]">
+              <p className="mt-3 text-sm leading-relaxed text-white/60">
                 {tagline}
               </p>
             )}
           </section>
 
           <section>
-            <h4 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-muted)]">
+            <h4 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-fuchsia-300/80">
               {t("links_title")}
             </h4>
-            <ul className="mt-4 space-y-2 text-sm">
+            <ul className="mt-4 space-y-2.5 text-sm">
               {NAV_LINKS.map((l) => (
                 <li key={l.href}>
                   <Link
                     href={l.href}
-                    className="text-[var(--color-muted-foreground)] transition-colors hover:text-[var(--color-primary)]"
+                    className="text-white/65 transition-colors hover:text-white"
                   >
                     {tNav(l.key)}
                   </Link>
@@ -62,7 +80,7 @@ export function Footer({ settings }: FooterProps) {
           </section>
 
           <section>
-            <h4 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-muted)]">
+            <h4 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-fuchsia-300/80">
               {t("follow_title")}
             </h4>
             {socials.length > 0 ? (
@@ -74,7 +92,7 @@ export function Footer({ settings }: FooterProps) {
                       target="_blank"
                       rel="noreferrer"
                       aria-label={label}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-fg)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/75 backdrop-blur transition-colors hover:border-fuchsia-400/50 hover:bg-white/10 hover:text-white"
                     >
                       <Icon className="h-4 w-4" />
                     </a>
@@ -82,18 +100,29 @@ export function Footer({ settings }: FooterProps) {
                 ))}
               </ul>
             ) : (
-              <p className="mt-4 text-sm text-[var(--color-muted-foreground)]">—</p>
+              <p className="mt-4 text-sm text-white/40">—</p>
             )}
           </section>
 
           <section>
-            <NewsletterSignup />
+            <h4 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-fuchsia-300/80">
+              {tHome("newsletter_title")}
+            </h4>
+            <p className="mt-2 text-sm text-white/60">
+              {tHome("newsletter_subtitle")}
+            </p>
+            <div className="mt-4">
+              <NewsletterSignup variant="dark" />
+            </div>
           </section>
         </div>
 
-        <div className="zellige-divider" aria-hidden="true" />
+        <div
+          aria-hidden
+          className="mt-12 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"
+        />
 
-        <div className="flex flex-col items-center justify-between gap-3 text-sm text-[var(--color-muted-foreground)] md:flex-row">
+        <div className="mt-6 flex flex-col items-center justify-between gap-3 text-xs text-white/50 md:flex-row">
           <p>{t("rights", { year, name: businessName })}</p>
           <p className="font-arabic">{t("made_with")}</p>
         </div>
