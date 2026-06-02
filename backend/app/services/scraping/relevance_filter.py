@@ -40,7 +40,13 @@ AI_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-MIN_WORD_COUNT = 200
+# Modern RSS feeds (TechCrunch, HuggingFace blog, etc.) only carry a short
+# excerpt in the feed body — the full article lives on the source website.
+# 80 words is a balance between letting these excerpts through and keeping a
+# minimum quality threshold to limit hallucination risk in the localizer.
+# A future enrichment step (fetch + readability on the URL) can raise this
+# back up once we extract full HTML.
+MIN_WORD_COUNT = 80
 
 _TRACKING_PARAM_PREFIXES = ("utm_",)
 _TRACKING_PARAM_NAMES = frozenset({"ref", "fbclid", "gclid", "mc_cid", "mc_eid"})
