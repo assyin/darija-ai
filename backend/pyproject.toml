@@ -28,6 +28,7 @@ dependencies = [
     "python-slugify>=8.0.4",
     "bleach>=6.2.0",
     "html2text>=2024.2.26",
+    "trafilatura>=2.0.0",
     "python-multipart>=0.0.18",
     "openai>=2.33.0",
     "psycopg2-binary>=2.9.10",
@@ -82,7 +83,7 @@ no_implicit_optional = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["feedparser", "selectolax.*", "langdetect", "replicate", "jose"]
+module = ["feedparser", "selectolax.*", "langdetect", "replicate", "jose", "trafilatura"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

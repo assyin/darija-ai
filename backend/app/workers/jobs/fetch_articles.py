@@ -4,6 +4,7 @@ from typing import Any
 
 from app.core.db import AsyncSessionLocal
 from app.core.logging import get_logger
+from app.services.scraping.html_enricher import HTMLEnricher
 from app.services.scraping.ingestion import IngestionService
 from app.services.scraping.rss_fetcher import RSSFetcher
 
@@ -16,7 +17,10 @@ async def fetch_articles(ctx: dict[str, Any]) -> dict[str, int]:
     Thin job: delegates to ``IngestionService``, then enqueues ``process_pending``
     so freshly inserted articles are localized without waiting for the next cron.
     """
-    service = IngestionService(rss_fetcher=RSSFetcher())
+    service = IngestionService(
+        rss_fetcher=RSSFetcher(),
+        enricher=HTMLEnricher(),
+    )
     async with AsyncSessionLocal() as session:
         results = await service.ingest_all_active(session)
 
@@ -25,6 +29,7 @@ async def fetch_articles(ctx: dict[str, Any]) -> dict[str, int]:
         "inserted": sum(r.inserted for r in results),
         "skipped": sum(r.skipped for r in results),
         "rejected": sum(r.rejected for r in results),
+        "enriched": sum(r.enriched for r in results),
         "sources": len(results),
     }
     log.info("fetch_articles.done", **totals)
