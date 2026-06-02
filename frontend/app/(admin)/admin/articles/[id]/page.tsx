@@ -58,12 +58,36 @@ export default function ArticleEditorPage() {
   const [showPublish, setShowPublish] = React.useState(false);
   const [showUnpublish, setShowUnpublish] = React.useState(false);
 
-  // AI proofreader state — Phase 1: darija only ("french" tab present but
-  // inert until Phase 2 introduces title_fr / content_fr columns).
+  // Language toggle: drives which set of fields is edited + the proofreader
+  // language target. Darija fields are required; French fields are nullable.
   const [lang, setLang] = React.useState<ProofreadLang>("darija");
   const [activeSuggestion, setActiveSuggestion] = React.useState<number | null>(
     null,
   );
+
+  // Field key map per language. Bind all editable inputs through this so the
+  // tab switch flips every input + the proofreader target in one place.
+  const fieldKeys = React.useMemo(
+    () =>
+      lang === "darija"
+        ? {
+            title: "title_darija" as const,
+            excerpt: "excerpt_darija" as const,
+            content: "content_darija" as const,
+            metaTitle: "meta_title" as const,
+            metaDescription: "meta_description" as const,
+          }
+        : {
+            title: "title_fr" as const,
+            excerpt: "excerpt_fr" as const,
+            content: "content_fr" as const,
+            metaTitle: "meta_title_fr" as const,
+            metaDescription: "meta_description_fr" as const,
+          },
+    [lang],
+  );
+  const dir = lang === "darija" ? "rtl" : "ltr";
+  const fontClass = lang === "darija" ? "font-tajawal" : "";
 
   // Reset the edit draft when a different article loads. Render-time reset —
   // the React-recommended alternative to calling setState inside an effect.
@@ -133,32 +157,33 @@ export default function ArticleEditorPage() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
-  // Proofreader hooks — manual trigger (no auto-fire, see use-proofreader.ts).
-  // FR is inert in Phase 1 until title_fr/content_fr columns land.
+  // Proofreader hooks — manual trigger (no auto-fire). Each hook reads the
+  // active language's field so swapping the tab points the analysis at the
+  // right text + lang.
   const titleProofread = useProofreader({
     articleId: id,
-    text: merged?.title_darija ?? "",
+    text: (merged?.[fieldKeys.title] as string | null | undefined) ?? "",
     lang,
     field: "title",
-    enabled: lang === "darija",
   });
   const bodyProofread = useProofreader({
     articleId: id,
-    text: merged?.content_darija ?? "",
+    text: (merged?.[fieldKeys.content] as string | null | undefined) ?? "",
     lang,
     field: "body",
-    enabled: lang === "darija",
   });
 
   const applySuggestion = React.useCallback(
     (
-      key: "title_darija" | "content_darija",
+      key: keyof ArticleUpdate,
       index: number,
       s: ProofreadSuggestion,
       dismiss: (i: number) => void,
     ) => {
       if (!merged) return;
-      const haystack = merged[key];
+      const haystack = (merged as unknown as Record<string, string | null>)[
+        key as string
+      ];
       if (!haystack || !s.original) return;
       // Robust matcher — tolerates Arabic-Indic vs Latin digits, bidi marks,
       // whitespace collapse, NFC vs NFD. See lib/proofread-match.ts.
@@ -172,7 +197,7 @@ export default function ArticleEditorPage() {
       }
       const next =
         haystack.slice(0, hit.start) + s.suggestion + haystack.slice(hit.end);
-      patch(key, next);
+      patch(key, next as ArticleUpdate[typeof key]);
       // Drop the suggestion from the panel and bump the displayed score —
       // avoids a fresh API call until the user manually re-évalue.
       dismiss(index);
@@ -253,74 +278,119 @@ export default function ArticleEditorPage() {
         </DropdownMenu>
       </header>
 
-      {/* Lang tabs — FR inert in Phase 1 (no FR columns yet). */}
-      <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-slate-50 p-0.5 text-xs">
-        {(["darija", "french"] as const).map((opt) => {
-          const disabled = opt === "french";
-          return (
-            <button
-              key={opt}
-              type="button"
-              disabled={disabled}
-              onClick={() => setLang(opt)}
-              title={disabled ? "Disponible en Phase 2 (champs FR)" : undefined}
-              className={cn(
-                "rounded-md px-3 py-1.5 font-medium transition",
-                lang === opt
-                  ? "bg-white text-[var(--color-fg)] shadow-sm"
-                  : "text-[var(--color-muted-foreground)] hover:text-[var(--color-fg)]",
-                disabled && "cursor-not-allowed opacity-50 hover:text-[var(--color-muted-foreground)]",
-              )}
-            >
-              {opt === "darija" ? "Darija" : "Français"}
-            </button>
-          );
-        })}
+      {/* Language tabs — flip every editable field + the proofreader target. */}
+      <div className="inline-flex items-center gap-2">
+        <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-slate-50 p-0.5 text-xs">
+          {(["darija", "french"] as const).map((opt) => {
+            const filled =
+              opt === "darija"
+                ? Boolean(merged.title_darija)
+                : Boolean(merged.title_fr);
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setLang(opt)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 font-medium transition",
+                  lang === opt
+                    ? "bg-white text-[var(--color-fg)] shadow-sm"
+                    : "text-[var(--color-muted-foreground)] hover:text-[var(--color-fg)]",
+                )}
+              >
+                {opt === "darija" ? "Darija" : "Français"}
+                {!filled && (
+                  <span
+                    title="Pas encore traduit"
+                    className="ms-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {lang === "french" && !merged.title_fr && (
+          <span className="text-[11px] text-amber-700">
+            Pas encore de traduction française — créez-en une en éditant les
+            champs ci-dessous.
+          </span>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label>Titre (darija)</Label>
+              <Label>Titre ({lang === "darija" ? "darija" : "français"})</Label>
               <TitleScoreBadge
                 result={titleProofread.result}
                 loading={titleProofread.loading}
                 stale={titleProofread.stale}
-                hidden={(merged.title_darija ?? "").trim().length < 6}
+                hidden={
+                  (
+                    ((merged as unknown as Record<string, string | null>)[
+                      fieldKeys.title
+                    ] ?? "")
+                  ).trim().length < 6
+                }
                 onEvaluate={titleProofread.evaluate}
               />
             </div>
             <Input
-              dir="rtl"
-              value={merged.title_darija}
-              onChange={(e) => patch("title_darija", e.target.value)}
-              onBlur={flushFor("title_darija")}
-              className="font-tajawal text-lg"
+              dir={dir}
+              value={
+                (merged as unknown as Record<string, string | null>)[
+                  fieldKeys.title
+                ] ?? ""
+              }
+              onChange={(e) => patch(fieldKeys.title, e.target.value)}
+              onBlur={flushFor(fieldKeys.title)}
+              className={cn("text-lg", fontClass)}
+              placeholder={
+                lang === "french" ? "Titre en français…" : undefined
+              }
             />
           </section>
 
           <section className="space-y-2">
             <Label>Extrait</Label>
             <Textarea
-              dir="rtl"
+              dir={dir}
               rows={2}
-              value={merged.excerpt_darija}
-              onChange={(e) => patch("excerpt_darija", e.target.value)}
-              onBlur={flushFor("excerpt_darija")}
-              className="font-tajawal"
+              value={
+                (merged as unknown as Record<string, string | null>)[
+                  fieldKeys.excerpt
+                ] ?? ""
+              }
+              onChange={(e) => patch(fieldKeys.excerpt, e.target.value)}
+              onBlur={flushFor(fieldKeys.excerpt)}
+              className={fontClass}
+              placeholder={
+                lang === "french" ? "Extrait en français…" : undefined
+              }
             />
           </section>
 
           <section className="space-y-2">
             <Label>Contenu (Markdown)</Label>
             <MarkdownEditor
-              value={merged.content_darija}
-              onChange={(v) => patch("content_darija", v)}
-              onBlur={flushFor("content_darija")}
+              value={
+                (merged as unknown as Record<string, string | null>)[
+                  fieldKeys.content
+                ] ?? ""
+              }
+              onChange={(v) => patch(fieldKeys.content, v)}
+              onBlur={flushFor(fieldKeys.content)}
+              dir={dir}
+              fontClass={fontClass}
               suggestions={bodyProofread.result?.suggestions ?? []}
               activeSuggestion={activeSuggestion}
               onSuggestionClick={(i) => setActiveSuggestion(i)}
+              placeholder={
+                lang === "french"
+                  ? "Tapez ou collez votre traduction française ici…"
+                  : undefined
+              }
             />
           </section>
         </div>
@@ -333,7 +403,7 @@ export default function ArticleEditorPage() {
           hasEvaluated={bodyProofread.result !== null}
           onEvaluate={bodyProofread.evaluate}
           onApply={(index, s) =>
-            applySuggestion("content_darija", index, s, bodyProofread.dismissSuggestion)
+            applySuggestion(fieldKeys.content, index, s, bodyProofread.dismissSuggestion)
           }
           onDismiss={bodyProofread.dismissSuggestion}
           activeIndex={activeSuggestion}
@@ -368,19 +438,36 @@ export default function ArticleEditorPage() {
                 onBlur={flushFor("hero_image_alt")}
               />
             </Field>
-            <Field label="Meta title (SEO)">
+            <Field
+              label={`Meta title (SEO · ${lang === "darija" ? "darija" : "français"})`}
+            >
               <Input
-                value={merged.meta_title ?? ""}
-                onChange={(e) => patch("meta_title", e.target.value)}
-                onBlur={flushFor("meta_title")}
+                dir={dir}
+                value={
+                  (merged as unknown as Record<string, string | null>)[
+                    fieldKeys.metaTitle
+                  ] ?? ""
+                }
+                onChange={(e) => patch(fieldKeys.metaTitle, e.target.value)}
+                onBlur={flushFor(fieldKeys.metaTitle)}
               />
             </Field>
-            <Field label="Meta description (SEO)" className="sm:col-span-2">
+            <Field
+              label={`Meta description (SEO · ${lang === "darija" ? "darija" : "français"})`}
+              className="sm:col-span-2"
+            >
               <Textarea
+                dir={dir}
                 rows={2}
-                value={merged.meta_description ?? ""}
-                onChange={(e) => patch("meta_description", e.target.value)}
-                onBlur={flushFor("meta_description")}
+                value={
+                  (merged as unknown as Record<string, string | null>)[
+                    fieldKeys.metaDescription
+                  ] ?? ""
+                }
+                onChange={(e) =>
+                  patch(fieldKeys.metaDescription, e.target.value)
+                }
+                onBlur={flushFor(fieldKeys.metaDescription)}
               />
             </Field>
           </div>

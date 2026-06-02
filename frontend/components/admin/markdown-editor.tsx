@@ -14,6 +14,10 @@ interface MarkdownEditorProps {
   onBlur?: () => void;
   className?: string;
   placeholder?: string;
+  /** Editor + preview direction. "rtl" for Darija, "ltr" for French. */
+  dir?: "rtl" | "ltr";
+  /** Font class applied to the textarea (e.g. font-tajawal for Darija). */
+  fontClass?: string;
   /** When provided, the preview pane renders Grammarly-style inline
    *  highlights for each suggestion's `original` phrase. */
   suggestions?: ProofreadSuggestion[];
@@ -31,6 +35,8 @@ export function MarkdownEditor({
   onBlur,
   className,
   placeholder,
+  dir = "rtl",
+  fontClass = "font-tajawal",
   suggestions,
   activeSuggestion,
   onSuggestionClick,
@@ -73,16 +79,19 @@ export function MarkdownEditor({
           )}
         >
           <div className="border-b border-[var(--color-border)] bg-slate-50 px-3 py-2 text-xs font-medium uppercase tracking-wider text-[var(--color-muted-foreground)]">
-            Markdown · darija
+            Markdown · {dir === "rtl" ? "darija" : "français"}
           </div>
           <Textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             placeholder={placeholder}
-            dir="auto"
+            dir={dir === "rtl" ? "auto" : "ltr"}
             spellCheck={false}
-            className="font-tajawal editor-scrollbar min-h-[60vh] w-full resize-none rounded-none border-0 px-4 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0"
+            className={cn(
+              "editor-scrollbar min-h-[60vh] w-full resize-none rounded-none border-0 px-4 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0",
+              fontClass,
+            )}
           />
         </div>
         <div
@@ -92,7 +101,7 @@ export function MarkdownEditor({
           )}
         >
           <div className="border-b border-[var(--color-border)] bg-slate-50 px-3 py-2 text-xs font-medium uppercase tracking-wider text-[var(--color-muted-foreground)]">
-            Aperçu (RTL)
+            Aperçu ({dir.toUpperCase()})
           </div>
           <div className="p-4">
             {value.trim() ? (
@@ -102,13 +111,14 @@ export function MarkdownEditor({
                   suggestions={suggestions}
                   activeIndex={activeSuggestion ?? null}
                   onSuggestionClick={onSuggestionClick}
+                  dir={dir}
                 />
               ) : (
-                <RtlContent markdown={value} />
+                <RtlContent markdown={value} dir={dir} />
               )
             ) : (
               <p className="text-sm text-[var(--color-muted-foreground)]">
-                Tapez du markdown pour voir l&apos;aperçu en RTL.
+                Tapez du markdown pour voir l&apos;aperçu.
               </p>
             )}
           </div>

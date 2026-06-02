@@ -55,6 +55,13 @@ class Article(SQLModel, table=True):
     content_darija: str = Field(sa_column=Column(Text, nullable=False))
     meta_title: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     meta_description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    # French translations — populated manually from the admin's Français tab,
+    # nullable so existing rows stay valid (migration 7f3a9c2e1b8d).
+    title_fr: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    excerpt_fr: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    content_fr: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    meta_title_fr: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    meta_description_fr: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     hero_image_url: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     hero_image_alt: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     categories: list[str] = Field(
