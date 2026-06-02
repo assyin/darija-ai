@@ -25,8 +25,10 @@ from app.schemas.article import (
     ArticleUpdate,
 )
 from app.schemas.auth import AdminUser
+from app.schemas.proofread import ProofreadRequest, ProofreadResult
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import Localizer
+from app.services.ai.proofreader import Proofreader
 from app.services.images.image_generator import ImageGenerator
 from app.services.images.r2_storage import R2Storage
 from app.services.images.replicate_client import ReplicateClient
@@ -216,6 +218,62 @@ async def unpublish_article(
         admin_email=user.email,
     )
     return article
+
+
+@admin_router.post("/{article_id}/proofread", response_model=ProofreadResult)
+async def proofread_article_field(
+    article_id: int,
+    payload: ProofreadRequest,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> ProofreadResult:
+    """Evaluate an editorial translation snippet and return a score + fix list.
+
+    The text comes from the request body, NOT from the DB, so the admin UI can
+    proofread *unsaved drafts* as the editor types. ``article_id`` is used
+    only for authorization + audit logging.
+
+    Cached in Redis 24 h by (model, lang, field, sha256(text)) — re-evaluating
+    the same text is free.
+    """
+    article = await session.get(Article, article_id)
+    if article is None or article.deleted_at is not None:
+        raise NotFoundError(
+            f"Article {article_id} not found",
+            details={"article_id": article_id},
+        )
+
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise ExternalServiceError(
+            "OpenAI API key not configured",
+            details={"setting": "OPENAI_API_KEY"},
+        )
+
+    async with _redis_for(settings) as redis_client:
+        proofreader = Proofreader(
+            api_key=settings.openai_api_key,
+            redis_client=redis_client,
+            model=settings.proofreader_model,
+        )
+        result = await proofreader.proofread(
+            text=payload.text,
+            lang=payload.lang,
+            field=payload.field,
+        )
+
+    logger.info(
+        "admin.article.proofread",
+        article_id=article_id,
+        field=payload.field,
+        lang=payload.lang,
+        score=result.score,
+        num_suggestions=len(result.suggestions),
+        cached=result.cached,
+        text_chars=len(payload.text),
+        admin_email=user.email,
+    )
+    return result
 
 
 @admin_router.post("/{article_id}/regenerate-image", response_model=ArticleAdminDetail)

@@ -91,6 +91,41 @@ export interface ArticlePublicDetail extends ArticlePublic {
   meta_description: string | null;
 }
 
+// ── Proofreader (AI translation corrector) ────────────────────────────────
+
+export type ProofreadLang = "darija" | "french";
+export type ProofreadField = "title" | "excerpt" | "body";
+export type ProofreadSeverity = "low" | "medium" | "high";
+export type ProofreadCategory =
+  | "grammar"
+  | "naturalness"
+  | "clarity"
+  | "consistency";
+
+export interface ProofreadSuggestion {
+  original: string;
+  suggestion: string;
+  reason: string;
+  severity: ProofreadSeverity;
+  category: ProofreadCategory;
+}
+
+export interface ProofreadResult {
+  score: number;
+  summary: string;
+  suggestions: ProofreadSuggestion[];
+  lang: ProofreadLang;
+  field: ProofreadField;
+  model: string;
+  cached: boolean;
+}
+
+export interface ProofreadRequest {
+  text: string;
+  lang: ProofreadLang;
+  field: ProofreadField;
+}
+
 export interface Source {
   id: number;
   name: string;

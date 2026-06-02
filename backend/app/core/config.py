@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
 
     localizer_prompt_version: str = "v3"
+    # OpenAI model used by the admin proofreader (Grammarly-style corrector).
+    # gpt-4o-mini is ~15x cheaper than gpt-4o and quality is excellent for
+    # editorial review; override via PROOFREADER_MODEL env if needed.
+    proofreader_model: str = "gpt-4o-mini"
 
     r2_account_id: str = ""
     r2_access_key_id: SecretStr = SecretStr("")
