@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { useProofreader } from "@/hooks/use-proofreader";
 import { adminApi, ApiError } from "@/lib/api-client";
+import { findOriginal } from "@/lib/proofread-match";
 import type {
   ArticleAdminDetail,
   ArticleUpdate,
@@ -159,13 +160,18 @@ export default function ArticleEditorPage() {
       if (!merged) return;
       const haystack = merged[key];
       if (!haystack || !s.original) return;
-      const at = haystack.indexOf(s.original);
-      if (at < 0) {
-        toast("Phrase introuvable (déjà modifiée ?)", "error");
+      // Robust matcher — tolerates Arabic-Indic vs Latin digits, bidi marks,
+      // whitespace collapse, NFC vs NFD. See lib/proofread-match.ts.
+      const hit = findOriginal(haystack, s.original);
+      if (hit === null) {
+        toast(
+          `Phrase introuvable : « ${s.original.slice(0, 50)}… ». Re-évaluer pour rafraîchir, ou Ignorer cette suggestion.`,
+          "error",
+        );
         return;
       }
       const next =
-        haystack.slice(0, at) + s.suggestion + haystack.slice(at + s.original.length);
+        haystack.slice(0, hit.start) + s.suggestion + haystack.slice(hit.end);
       patch(key, next);
       // Drop the suggestion from the panel and bump the displayed score —
       // avoids a fresh API call until the user manually re-évalue.
@@ -329,6 +335,7 @@ export default function ArticleEditorPage() {
           onApply={(index, s) =>
             applySuggestion("content_darija", index, s, bodyProofread.dismissSuggestion)
           }
+          onDismiss={bodyProofread.dismissSuggestion}
           activeIndex={activeSuggestion}
           onSelect={setActiveSuggestion}
         />

@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Check, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { ProofreadResult, ProofreadSuggestion } from "@/lib/types";
@@ -18,6 +25,8 @@ interface ProofreaderPanelProps {
   onEvaluate: () => void;
   /** Apply a suggestion (writes the replacement into the field's draft state). */
   onApply: (index: number, suggestion: ProofreadSuggestion) => void;
+  /** Remove a suggestion from the panel without applying it. */
+  onDismiss?: (index: number) => void;
   /** Highlight sync with the inline marks in the preview. */
   activeIndex?: number | null;
   onSelect?: (index: number | null) => void;
@@ -50,6 +59,7 @@ export function ProofreaderPanel({
   hasEvaluated,
   onEvaluate,
   onApply,
+  onDismiss,
   activeIndex = null,
   onSelect,
 }: ProofreaderPanelProps) {
@@ -161,6 +171,7 @@ export function ProofreaderPanel({
                     suggestion={s}
                     isActive={activeIndex === i}
                     onApply={() => onApply(i, s)}
+                    onDismiss={onDismiss ? () => onDismiss(i) : undefined}
                     onMouseEnter={() => onSelect?.(i)}
                     onMouseLeave={() => onSelect?.(null)}
                     onClick={() => onSelect?.(i)}
@@ -179,6 +190,7 @@ interface SuggestionRowProps {
   suggestion: ProofreadSuggestion;
   isActive: boolean;
   onApply: () => void;
+  onDismiss?: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onClick: () => void;
@@ -188,6 +200,7 @@ function SuggestionRow({
   suggestion,
   isActive,
   onApply,
+  onDismiss,
   onMouseEnter,
   onMouseLeave,
   onClick,
@@ -212,18 +225,33 @@ function SuggestionRow({
           />
           {CATEGORY_LABEL[suggestion.category]}
         </span>
-        {suggestion.suggestion && suggestion.suggestion !== suggestion.original && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onApply();
-            }}
-            className="rounded bg-fuchsia-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white hover:brightness-110"
-          >
-            Apply
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismiss();
+              }}
+              title="Ignorer cette suggestion"
+              className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--color-muted-foreground)] hover:bg-slate-200 hover:text-rose-700"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          {suggestion.suggestion && suggestion.suggestion !== suggestion.original && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApply();
+              }}
+              className="rounded bg-fuchsia-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white hover:brightness-110"
+            >
+              Apply
+            </button>
+          )}
+        </div>
       </div>
       <div className="mt-1.5 break-words text-sm">
         <span
