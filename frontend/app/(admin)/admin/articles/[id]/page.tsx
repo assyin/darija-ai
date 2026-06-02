@@ -132,15 +132,13 @@ export default function ArticleEditorPage() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
-  // Proofreader hooks — one for the title (fast, short text), one for the
-  // body (longer debounce, fires only when there's enough to evaluate).
+  // Proofreader hooks — manual trigger (no auto-fire, see use-proofreader.ts).
+  // FR is inert in Phase 1 until title_fr/content_fr columns land.
   const titleProofread = useProofreader({
     articleId: id,
     text: merged?.title_darija ?? "",
     lang,
     field: "title",
-    delayMs: 1500,
-    minChars: 6,
     enabled: lang === "darija",
   });
   const bodyProofread = useProofreader({
@@ -148,13 +146,16 @@ export default function ArticleEditorPage() {
     text: merged?.content_darija ?? "",
     lang,
     field: "body",
-    delayMs: 2500,
-    minChars: 40,
     enabled: lang === "darija",
   });
 
   const applySuggestion = React.useCallback(
-    (key: "title_darija" | "content_darija", s: ProofreadSuggestion) => {
+    (
+      key: "title_darija" | "content_darija",
+      index: number,
+      s: ProofreadSuggestion,
+      dismiss: (i: number) => void,
+    ) => {
       if (!merged) return;
       const haystack = merged[key];
       if (!haystack || !s.original) return;
@@ -166,6 +167,9 @@ export default function ArticleEditorPage() {
       const next =
         haystack.slice(0, at) + s.suggestion + haystack.slice(at + s.original.length);
       patch(key, next);
+      // Drop the suggestion from the panel and bump the displayed score —
+      // avoids a fresh API call until the user manually re-évalue.
+      dismiss(index);
     },
     [merged, toast],
   );
@@ -276,7 +280,9 @@ export default function ArticleEditorPage() {
               <TitleScoreBadge
                 result={titleProofread.result}
                 loading={titleProofread.loading}
+                stale={titleProofread.stale}
                 hidden={(merged.title_darija ?? "").trim().length < 6}
+                onEvaluate={titleProofread.evaluate}
               />
             </div>
             <Input
@@ -317,8 +323,12 @@ export default function ArticleEditorPage() {
           result={bodyProofread.result}
           loading={bodyProofread.loading}
           error={bodyProofread.error}
-          onApply={(s) => applySuggestion("content_darija", s)}
-          onRefetch={bodyProofread.refetch}
+          stale={bodyProofread.stale}
+          hasEvaluated={bodyProofread.result !== null}
+          onEvaluate={bodyProofread.evaluate}
+          onApply={(index, s) =>
+            applySuggestion("content_darija", index, s, bodyProofread.dismissSuggestion)
+          }
           activeIndex={activeSuggestion}
           onSelect={setActiveSuggestion}
         />

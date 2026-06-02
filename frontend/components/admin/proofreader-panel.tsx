@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Check, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Check, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { ProofreadResult, ProofreadSuggestion } from "@/lib/types";
@@ -11,11 +11,15 @@ interface ProofreaderPanelProps {
   result: ProofreadResult | null;
   loading: boolean;
   error: string | null;
-  onApply: (suggestion: ProofreadSuggestion) => void;
-  onRefetch: () => void;
-  /** Which suggestion is currently scrolled to (for highlight sync). */
+  stale: boolean;
+  /** `null` until the user has ever evaluated. */
+  hasEvaluated: boolean;
+  /** Triggered when the user clicks Évaluer / Re-évaluer. */
+  onEvaluate: () => void;
+  /** Apply a suggestion (writes the replacement into the field's draft state). */
+  onApply: (index: number, suggestion: ProofreadSuggestion) => void;
+  /** Highlight sync with the inline marks in the preview. */
   activeIndex?: number | null;
-  /** Callback when the user hovers/clicks a suggestion in the panel. */
   onSelect?: (index: number | null) => void;
 }
 
@@ -42,8 +46,10 @@ export function ProofreaderPanel({
   result,
   loading,
   error,
+  stale,
+  hasEvaluated,
+  onEvaluate,
   onApply,
-  onRefetch,
   activeIndex = null,
   onSelect,
 }: ProofreaderPanelProps) {
@@ -55,28 +61,31 @@ export function ProofreaderPanel({
             Correcteur IA
           </p>
           <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
-            {result?.cached
-              ? "Score mémorisé · re-évaluez après modifs"
-              : loading
-                ? "Analyse en cours…"
+            {loading
+              ? "Analyse en cours…"
+              : stale
+                ? "⚠ Texte modifié depuis"
                 : result
-                  ? `Modèle : ${result.model}`
-                  : "En attente de contenu…"}
+                  ? `${result.cached ? "(cached) " : ""}${result.model}`
+                  : "Cliquez sur Évaluer pour commencer"}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onRefetch}
-          title="Re-évaluer"
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-        </Button>
+        {hasEvaluated && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onEvaluate}
+            title={stale ? "Re-évaluer (texte modifié)" : "Re-évaluer"}
+            disabled={loading}
+            className={cn(stale && "border-fuchsia-400 text-fuchsia-600")}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
@@ -84,6 +93,33 @@ export function ProofreaderPanel({
           <div className="mb-3 flex items-start gap-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-900">
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Initial state — never evaluated */}
+        {!hasEvaluated && !loading && (
+          <div className="flex flex-col items-stretch gap-2 py-2 text-center">
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              L&apos;analyse coûte ~$0.0002 (gpt-4o-mini).
+              <br />
+              Cliquez quand vous êtes prêt.
+            </p>
+            <Button
+              size="sm"
+              onClick={onEvaluate}
+              className="gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white hover:brightness-110"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Évaluer le contenu
+            </Button>
+          </div>
+        )}
+
+        {/* First-time loading — show a placeholder */}
+        {loading && !result && (
+          <div className="flex items-center justify-center gap-2 py-6 text-xs text-[var(--color-muted-foreground)]">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Analyse de la traduction…
           </div>
         )}
 
@@ -101,9 +137,15 @@ export function ProofreaderPanel({
               <span className="text-xs font-medium opacity-70">/ 100</span>
             </div>
             {result.summary && (
-              <p className="mb-4 text-xs leading-relaxed text-[var(--color-muted-foreground)]">
+              <p className="mb-3 text-xs leading-relaxed text-[var(--color-muted-foreground)]">
                 {result.summary}
               </p>
+            )}
+            {stale && (
+              <div className="mb-3 rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-2 text-[11px] text-fuchsia-900">
+                Le texte a changé. <strong>Re-évaluer</strong> pour un score à
+                jour.
+              </div>
             )}
 
             {result.suggestions.length === 0 ? (
@@ -115,11 +157,10 @@ export function ProofreaderPanel({
               <ul className="space-y-2.5">
                 {result.suggestions.map((s, i) => (
                   <SuggestionRow
-                    key={i}
-                    index={i}
+                    key={`${i}-${s.original.slice(0, 16)}`}
                     suggestion={s}
                     isActive={activeIndex === i}
-                    onApply={() => onApply(s)}
+                    onApply={() => onApply(i, s)}
                     onMouseEnter={() => onSelect?.(i)}
                     onMouseLeave={() => onSelect?.(null)}
                     onClick={() => onSelect?.(i)}
@@ -129,19 +170,12 @@ export function ProofreaderPanel({
             )}
           </>
         )}
-
-        {!result && !loading && !error && (
-          <p className="text-xs text-[var(--color-muted-foreground)]">
-            Tapez quelques mots dans le contenu pour lancer l&apos;analyse.
-          </p>
-        )}
       </div>
     </aside>
   );
 }
 
 interface SuggestionRowProps {
-  index: number;
   suggestion: ProofreadSuggestion;
   isActive: boolean;
   onApply: () => void;
