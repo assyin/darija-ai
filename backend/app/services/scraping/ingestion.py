@@ -11,6 +11,7 @@ from app.core.exceptions import ExternalServiceError
 from app.core.logging import get_logger
 from app.models.raw_article import RawArticle
 from app.models.source import Source
+from app.services.scraping.html_enricher import HTMLEnricher
 from app.services.scraping.relevance_filter import is_relevant, normalize_url, url_hash
 from app.services.scraping.rss_fetcher import FetchedItem, RSSFetcher
 
@@ -25,6 +26,7 @@ class IngestionResult:
     inserted: int = 0
     skipped: int = 0
     rejected: int = 0
+    enriched: int = 0
     errors: list[str] = field(default_factory=list)
     duration_ms: int = 0
 
@@ -33,9 +35,11 @@ class IngestionService:
     def __init__(
         self,
         rss_fetcher: RSSFetcher,
+        enricher: HTMLEnricher | None = None,
         max_items_per_source: int = 20,
     ):
         self._rss_fetcher = rss_fetcher
+        self._enricher = enricher
         self._max_items_per_source = max_items_per_source
 
     async def ingest_source(self, source: Source, session: AsyncSession) -> IngestionResult:
@@ -122,7 +126,42 @@ class IngestionService:
             result.skipped += 1
             return
 
-        relevant, reason = is_relevant(item.title, item.content)
+        # Default to the RSS body. Conditional enrichment may upgrade it below.
+        content: str = item.content
+        relevant, reason = is_relevant(item.title, content)
+
+        # Enrichment fallback: only when the RSS body is too short. Items
+        # rejected for "no_ai_keywords" stay rejected (different problem —
+        # they're off-topic, not under-detailed).
+        if not relevant and reason == "too_short" and self._enricher is not None:
+            original_words = len(content.split())
+            logger.info(
+                "source.enrichment_attempted",
+                source_id=source_id,
+                url=normalized,
+                original_words=original_words,
+            )
+            enriched = await self._enricher.enrich(item.url)
+            if enriched:
+                content = enriched
+                extracted_words = len(content.split())
+                relevant, reason = is_relevant(item.title, content)
+                logger.info(
+                    "source.enrichment_success",
+                    source_id=source_id,
+                    url=normalized,
+                    extracted_words=extracted_words,
+                    now_relevant=relevant,
+                )
+                if relevant:
+                    result.enriched += 1
+            else:
+                logger.info(
+                    "source.enrichment_failed",
+                    source_id=source_id,
+                    url=normalized,
+                )
+
         if not relevant:
             logger.info(
                 "source.item_rejected",
@@ -139,7 +178,7 @@ class IngestionService:
             external_url=normalized,
             url_hash=h,
             original_title=item.title,
-            original_content=item.content,
+            original_content=content,
             original_excerpt=item.excerpt,
             original_image_url=item.image_url,
             published_at=item.published_at,
