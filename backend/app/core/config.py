@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     replicate_api_token: SecretStr
     openai_api_key: str | None = None
 
-    localizer_prompt_version: str = "v2"
+    localizer_prompt_version: str = "v3"
 
     r2_account_id: str = ""
     r2_access_key_id: SecretStr = SecretStr("")
