@@ -8,6 +8,8 @@
 *.pem
 hetzner.txt
 *hetzner*
+identifiant.txt
+identifiants*.txt
 id_ed25519*
 id_rsa*
 

@@ -20,7 +20,29 @@
     "newsletter_placeholder": "Votre email",
     "newsletter_cta": "S'abonner",
     "newsletter_success": "C'est fait — à très vite dans votre boîte.",
-    "newsletter_error": "Une erreur est survenue, réessayez"
+    "newsletter_error": "Une erreur est survenue, réessayez",
+    "services_title": "Nos services IA",
+    "stats": {
+      "articles_label": "articles",
+      "lang_value": "100%",
+      "lang_label": "en darija",
+      "freq_value": "Quotidien",
+      "freq_label": "mises à jour",
+      "free_value": "Gratuit",
+      "free_label": "pour tous"
+    },
+    "testimonials_title": "Ils en parlent",
+    "testimonials": {
+      "t1_quote": "Enfin une plateforme qui explique l'IA clairement. J'apprends quelque chose chaque semaine.",
+      "t1_name": "Amine",
+      "t1_role": "Développeur",
+      "t2_quote": "Du contenu concret et clair, sans jargon. Je l'ai recommandé autour de moi.",
+      "t2_name": "Sara",
+      "t2_role": "Ingénieure",
+      "t3_quote": "J'aime la façon dont ils relient la tech mondiale à notre réalité au Maroc.",
+      "t3_name": "Youssef",
+      "t3_role": "Entrepreneur"
+    }
   },
   "article": {
     "reading_time": "{minutes} min de lecture",
@@ -62,12 +84,18 @@
   },
   "about": {
     "page_title": "À propos",
-    "intro": "Première plateforme marocaine d'actualités IA en darija",
-    "mission_title": "Notre mission",
-    "mission_text": "Rendre l'IA claire et accessible aux Marocains. Une technologie qui change le monde doit s'expliquer dans la langue qu'on parle.",
+    "tagline_kicker": "La plateforme · l'idée · la vision",
+    "intro": "Une plateforme marocaine indépendante qui explique l'intelligence artificielle en darija — sans jargon, sans barrière de langue.",
+    "manifesto_quote": "L'IA doit être accessible en darija, parce que c'est la langue dans laquelle on pense avant tout.",
+    "mission_title": "Pourquoi cette plateforme ?",
+    "mission_text": "L'intelligence artificielle évolue chaque jour — et tout se fait en anglais ou en français. Résultat : notre génération, pleine d'idées et d'envie, se retrouve hors du débat. Cette plateforme existe pour combler ce vide : rendre l'IA compréhensible en darija, sans sacrifier la profondeur ni la précision.",
     "why_darija_title": "Pourquoi la darija ?",
-    "why_darija_text": "La darija, c'est la langue dans laquelle on pense, on explique, on comprend le mieux. L'IA n'est pas réservée aux anglophones — elle est aussi à nous.",
-    "founder_intro": "Fondé par"
+    "why_darija_text": "La darija, c'est la langue dans laquelle on pense, on explique, on comprend le mieux. On ne veut pas juste traduire des mots — on veut rapprocher les idées. L'anglais et le français sont là pour écouter ; la darija est là pour comprendre.",
+    "non_commercial_label": "Non commerciale",
+    "non_commercial_text": "Cette plateforme n'est pas un projet commercial. Elle existe pour servir la communauté — on y partage la compréhension de l'IA gratuitement, sans abonnement et sans publicité dans le contenu.",
+    "behind_title": "La personne derrière",
+    "behind_intro": "Fondée par",
+    "behind_note": "Je travaille dans la tech depuis des années, et je vois chaque jour l'écart se creuser entre ceux qui ont accès à la connaissance dans la langue de l'IA et ceux qui ne l'ont pas. J'ai créé cette plateforme pour contribuer — même par une goutte dans l'océan."
   },
   "contact": {
     "page_title": "Contact",
@@ -90,6 +118,12 @@
     "follow_title": "Suivez-nous",
     "rights": "© {year} {name}. Tous droits réservés.",
     "made_with": "Fabriqué au Maroc 🇲🇦"
+  },
+  "not_found": {
+    "kicker": "ERROR 404",
+    "title": "Cette page reste introuvable",
+    "message": "Le lien est peut-être obsolète, la page a bougé, ou on s'est un peu perdus dans le cosmos. Revenez à l'accueil — la suite vous y attend.",
+    "back_button": "Retour à l'accueil"
   },
   "common": {
     "read_more": "Lire la suite",

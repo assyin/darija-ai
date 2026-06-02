@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save } from "lucide-react";
+import { Check, Loader2, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/api-client";
+import { HERO_VARIANTS, isHeroVariantKey } from "@/lib/hero-variants";
+import { cn } from "@/lib/utils";
 import type { BulkUpdateItem, SettingCategory, SiteSettingAdmin } from "@/lib/types";
 
 const CATEGORY_LABELS: Record<SettingCategory, string> = {
@@ -192,7 +195,9 @@ function SettingField({
           {setting.description}
         </p>
       )}
-      {setting.value_type === "markdown" || setting.value_type === "html" ? (
+      {isHeroVariantKey(setting.key) ? (
+        <HeroVariantPicker value={value} onChange={onChange} />
+      ) : setting.value_type === "markdown" || setting.value_type === "html" ? (
         <Textarea
           id={id}
           rows={10}
@@ -217,6 +222,68 @@ function SettingField({
           }
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Thumbnail grid for choosing a hero illustration. The available variants are
+ * declared in `lib/hero-variants.ts` (same source the public Hero component
+ * reads), so this stays in sync without any extra wiring.
+ */
+function HeroVariantPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+    >
+      {HERO_VARIANTS.map((variant) => {
+        const selected = variant.id === value;
+        return (
+          <button
+            key={variant.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(variant.id)}
+            className={cn(
+              "group relative overflow-hidden rounded-md border-2 bg-white text-start transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-1",
+              selected
+                ? "border-[var(--color-primary)] shadow-md"
+                : "border-[var(--color-border)] hover:border-[var(--color-primary)]/50",
+            )}
+          >
+            <div className="relative aspect-square w-full bg-slate-950">
+              <Image
+                src={variant.src}
+                alt={variant.label}
+                fill
+                sizes="(min-width: 640px) 12rem, 45vw"
+                className="object-cover"
+              />
+              {selected && (
+                <span className="absolute end-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)] text-white shadow">
+                  <Check className="h-3.5 w-3.5" />
+                </span>
+              )}
+            </div>
+            <div className="space-y-0.5 p-2">
+              <div className="text-xs font-medium leading-snug">
+                {variant.label}
+              </div>
+              <div className="text-[10px] leading-snug text-[var(--color-muted-foreground)]">
+                {variant.description}
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

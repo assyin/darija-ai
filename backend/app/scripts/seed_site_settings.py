@@ -108,6 +108,27 @@ SEED_SETTINGS: list[Seed] = [
         True,
     ),
     Seed("business_logo_url", "", "url", "branding", "URL du logo", "Image hébergée sur R2", True),
+    # Hero illustration variants — picked from admin Settings page.
+    # Allowed IDs are declared in `frontend/lib/hero-variants.ts` and stay in sync
+    # via the admin thumbnail picker (no free-text needed in normal use).
+    Seed(
+        "hero_variant_ar",
+        "marrakech-sunset",
+        "string",
+        "branding",
+        "Hero illustration (locale AR)",
+        "ID de l'image affichée sur la home arabe. Valeurs: marrakech-sunset, cool-city, medina-atlas, marrakech-square.",  # noqa: E501
+        True,
+    ),
+    Seed(
+        "hero_variant_fr",
+        "cool-city",
+        "string",
+        "branding",
+        "Hero illustration (locale FR)",
+        "ID de l'image affichée sur la home française. Valeurs: marrakech-sunset, cool-city, medina-atlas, marrakech-square.",  # noqa: E501
+        True,
+    ),
     # SEO (public)
     Seed(
         "seo_default_title",
