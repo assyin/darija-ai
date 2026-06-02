@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
 
+import { localizeArticle } from "@/lib/article-localize";
 import { bdiHtml, stripBdi } from "@/lib/bidi";
 import type { ArticlePublic } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ export function ArticleCardPublic({
   theme = "dark",
 }: ArticleCardPublicProps) {
   const t = useTranslations("article");
+  const locale = useLocale();
+  const localized = localizeArticle(article, locale);
   const tCommon = useTranslations("common");
   const isFeatured = variant === "featured";
   const isLight = theme === "light";
@@ -54,7 +57,7 @@ export function ArticleCardPublic({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={article.hero_image_url}
-            alt={article.hero_image_alt ?? stripBdi(article.title_darija)}
+            alt={article.hero_image_alt ?? stripBdi(localized.title)}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
           />
@@ -88,25 +91,27 @@ export function ArticleCardPublic({
       {/* Body */}
       <div className={cn("flex flex-1 flex-col gap-3", isFeatured ? "p-6" : "p-5")}>
         <h3
-          dir="rtl"
-          aria-label={stripBdi(article.title_darija)}
+          dir={localized.dir}
+          aria-label={stripBdi(localized.title)}
           className={cn(
-            "font-arabic-display font-bold leading-snug line-clamp-2 transition-colors",
+            "font-bold leading-snug line-clamp-2 transition-colors",
+            localized.dir === "rtl" && "font-arabic-display",
             isLight
               ? "text-zinc-900 group-hover:text-violet-700"
               : "text-white group-hover:text-fuchsia-100",
             isFeatured ? "text-2xl" : "text-lg",
           )}
-          dangerouslySetInnerHTML={{ __html: bdiHtml(article.title_darija) }}
+          dangerouslySetInnerHTML={{ __html: bdiHtml(localized.title) }}
         />
         <p
-          dir="rtl"
+          dir={localized.dir}
           className={cn(
-            "font-arabic line-clamp-3",
+            "line-clamp-3",
+            localized.dir === "rtl" && "font-arabic",
             isLight ? "text-zinc-600" : "text-white/65",
             isFeatured ? "text-base" : "text-sm",
           )}
-          dangerouslySetInnerHTML={{ __html: bdiHtml(article.excerpt_darija) }}
+          dangerouslySetInnerHTML={{ __html: bdiHtml(localized.excerpt) }}
         />
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-2 text-xs">

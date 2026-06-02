@@ -26,6 +26,8 @@ interface ProofreadingRtlContentProps {
   onSuggestionClick?: (index: number) => void;
   activeIndex?: number | null;
   className?: string;
+  /** Render direction. "rtl" for Darija, "ltr" for French. */
+  dir?: "rtl" | "ltr";
 }
 
 const SEVERITY_CLS: Record<ProofreadSuggestion["severity"], string> = {
@@ -40,6 +42,7 @@ export function ProofreadingRtlContent({
   onSuggestionClick,
   activeIndex = null,
   className,
+  dir = "rtl",
 }: ProofreadingRtlContentProps) {
   // Pre-compute non-empty originals once.
   const nonEmpty = React.useMemo(
@@ -73,7 +76,10 @@ export function ProofreadingRtlContent({
   );
 
   return (
-    <div className={cn("prose-rtl", className)} dir="rtl">
+    <div
+      className={cn(dir === "rtl" ? "prose-rtl" : "prose-ltr", className)}
+      dir={dir}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}

@@ -7,10 +7,12 @@ import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
 import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { ArticleCTA } from "@/components/public/article-cta";
 import { RtlContent } from "@/components/shared/rtl-content";
-import { bdiHtml, stripBdi } from "@/lib/bidi";
 import { publicApi } from "@/lib/api-client";
+import { localizeArticle } from "@/lib/article-localize";
+import { bdiHtml, stripBdi } from "@/lib/bidi";
 import type { ArticlePublic } from "@/lib/types";
 import { getSiteSettings } from "@/lib/use-site-settings";
+import { cn } from "@/lib/utils";
 
 const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -19,16 +21,15 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug, locale } = await params;
   const article = await publicApi.getArticle(slug);
   if (!article) return { title: "Article" };
 
   const url = `${SITE_BASE}/articles/${article.slug}`;
+  const localized = localizeArticle(article, locale);
   // Strip bdi tags — metadata is plain-text, not HTML.
-  const title = stripBdi(article.meta_title || article.title_darija);
-  const description = stripBdi(
-    article.meta_description || article.excerpt_darija,
-  );
+  const title = stripBdi(localized.metaTitle || localized.title);
+  const description = stripBdi(localized.metaDescription || localized.excerpt);
   // Hero image when available, else fall back to the bundled brand mark so
   // social previews always carry our identity.
   const heroImage = article.hero_image_url;
@@ -39,7 +40,7 @@ export async function generateMetadata({
     alternates: { canonical: url },
     openGraph: {
       type: "article",
-      locale: "ar_MA",
+      locale: localized.contentLang === "fr" ? "fr_FR" : "ar_MA",
       title,
       description,
       url,
@@ -81,12 +82,13 @@ export default async function ArticlePage({
     .catch(() => [] as ArticlePublic[]);
   const url = `${SITE_BASE}/articles/${article.slug}`;
   const businessName = settings.business_name || "DarijaAI";
+  const localized = localizeArticle(article, locale);
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "NewsArticle",
-    headline: stripBdi(article.title_darija),
-    description: stripBdi(article.excerpt_darija),
+    headline: stripBdi(localized.title),
+    description: stripBdi(localized.excerpt),
     image: article.hero_image_url ? [article.hero_image_url] : undefined,
     datePublished: article.published_at,
     dateModified: article.published_at,
@@ -100,7 +102,7 @@ export default async function ArticlePage({
       },
     },
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
-    inLanguage: "ar-MA",
+    inLanguage: localized.contentLang,
   };
 
   // Light editorial theme — only this page swaps the public dark tokens for
@@ -167,15 +169,27 @@ export default async function ArticlePage({
           </div>
 
           <h1
-            dir="rtl"
-            className="font-arabic-display mt-6 text-3xl font-bold leading-tight text-zinc-900 md:text-5xl"
-            dangerouslySetInnerHTML={{ __html: bdiHtml(article.title_darija) }}
+            dir={localized.dir}
+            className={cn(
+              "mt-6 text-3xl font-bold leading-tight text-zinc-900 md:text-5xl",
+              localized.dir === "rtl" && "font-arabic-display",
+            )}
+            dangerouslySetInnerHTML={{ __html: bdiHtml(localized.title) }}
           />
           <p
-            dir="rtl"
-            className="font-arabic mx-auto mt-5 max-w-2xl text-lg text-zinc-600 md:text-xl"
-            dangerouslySetInnerHTML={{ __html: bdiHtml(article.excerpt_darija) }}
+            dir={localized.dir}
+            className={cn(
+              "mx-auto mt-5 max-w-2xl text-lg text-zinc-600 md:text-xl",
+              localized.dir === "rtl" && "font-arabic",
+            )}
+            dangerouslySetInnerHTML={{ __html: bdiHtml(localized.excerpt) }}
           />
+          {localized.isFallback && (
+            <p className="mx-auto mt-3 max-w-2xl rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+              Traduction française non disponible — version originale en darija
+              affichée.
+            </p>
+          )}
         </header>
 
         {/* Hero image — light backdrop + soft shadow */}
@@ -189,7 +203,7 @@ export default async function ArticlePage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={article.hero_image_url}
-                alt={stripBdi(article.hero_image_alt ?? article.title_darija)}
+                alt={stripBdi(article.hero_image_alt ?? localized.title)}
                 className="relative h-full w-full object-cover"
               />
             </figure>
@@ -198,7 +212,10 @@ export default async function ArticlePage({
 
         {/* Body */}
         <div className="container-narrow py-10">
-          <RtlContent markdown={article.content_darija} />
+          <RtlContent
+            markdown={localized.content ?? article.content_darija}
+            dir={localized.dir}
+          />
         </div>
 
         {/* Editorial CTA — driven by site_settings.cta_template_darija */}

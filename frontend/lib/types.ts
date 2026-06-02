@@ -51,12 +51,19 @@ export interface ArticleAdmin {
   views_count: number;
   created_at: string;
   updated_at: string;
+  /** French summary fields — null until the admin authors them. */
+  title_fr: string | null;
+  excerpt_fr: string | null;
 }
 
 export interface ArticleAdminDetail extends ArticleAdmin {
   content_darija: string;
   meta_title: string | null;
   meta_description: string | null;
+  /** Full French content for the editor. Null until authored. */
+  content_fr: string | null;
+  meta_title_fr: string | null;
+  meta_description_fr: string | null;
 }
 
 export interface ArticleUpdate {
@@ -69,6 +76,12 @@ export interface ArticleUpdate {
   hero_image_alt?: string;
   categories?: string[];
   tags?: string[];
+  /** French variants — set to empty string to clear. */
+  title_fr?: string;
+  excerpt_fr?: string;
+  content_fr?: string;
+  meta_title_fr?: string;
+  meta_description_fr?: string;
 }
 
 export interface ArticlePublic {
@@ -83,12 +96,17 @@ export interface ArticlePublic {
   word_count: number | null;
   reading_time_minutes: number | null;
   published_at: string | null;
+  title_fr: string | null;
+  excerpt_fr: string | null;
 }
 
 export interface ArticlePublicDetail extends ArticlePublic {
   content_darija: string;
   meta_title: string | null;
   meta_description: string | null;
+  content_fr: string | null;
+  meta_title_fr: string | null;
+  meta_description_fr: string | null;
 }
 
 // ── Proofreader (AI translation corrector) ────────────────────────────────
