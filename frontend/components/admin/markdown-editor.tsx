@@ -2,8 +2,10 @@
 
 import * as React from "react";
 
-import { Textarea } from "@/components/ui/textarea";
+import { ProofreadingRtlContent } from "@/components/admin/proofreading-rtl-content";
 import { RtlContent } from "@/components/shared/rtl-content";
+import { Textarea } from "@/components/ui/textarea";
+import type { ProofreadSuggestion } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface MarkdownEditorProps {
@@ -12,6 +14,15 @@ interface MarkdownEditorProps {
   onBlur?: () => void;
   className?: string;
   placeholder?: string;
+  /** When provided, the preview pane renders Grammarly-style inline
+   *  highlights for each suggestion's `original` phrase. */
+  suggestions?: ProofreadSuggestion[];
+  /** Currently focused/hovered suggestion in the sidebar — its highlight
+   *  is given a stronger ring so it stands out. */
+  activeSuggestion?: number | null;
+  /** Click handler for inline highlights — typically scrolls/opens the
+   *  matching row in the sidebar. */
+  onSuggestionClick?: (index: number) => void;
 }
 
 export function MarkdownEditor({
@@ -20,6 +31,9 @@ export function MarkdownEditor({
   onBlur,
   className,
   placeholder,
+  suggestions,
+  activeSuggestion,
+  onSuggestionClick,
 }: MarkdownEditorProps) {
   const [activeTab, setActiveTab] = React.useState<"editor" | "preview">("editor");
 
@@ -82,7 +96,16 @@ export function MarkdownEditor({
           </div>
           <div className="p-4">
             {value.trim() ? (
-              <RtlContent markdown={value} />
+              suggestions && suggestions.length > 0 ? (
+                <ProofreadingRtlContent
+                  markdown={value}
+                  suggestions={suggestions}
+                  activeIndex={activeSuggestion ?? null}
+                  onSuggestionClick={onSuggestionClick}
+                />
+              ) : (
+                <RtlContent markdown={value} />
+              )
             ) : (
               <p className="text-sm text-[var(--color-muted-foreground)]">
                 Tapez du markdown pour voir l&apos;aperçu en RTL.

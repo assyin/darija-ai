@@ -7,9 +7,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ImagePlus, Loader2, MoreVertical, Save, Send } from "lucide-react";
 
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
+import { ProofreaderPanel } from "@/components/admin/proofreader-panel";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { TitleScoreBadge } from "@/components/admin/title-score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -28,8 +31,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { useProofreader } from "@/hooks/use-proofreader";
 import { adminApi, ApiError } from "@/lib/api-client";
-import type { ArticleAdminDetail, ArticleUpdate } from "@/lib/types";
+import type {
+  ArticleAdminDetail,
+  ArticleUpdate,
+  ProofreadLang,
+  ProofreadSuggestion,
+} from "@/lib/types";
 
 export default function ArticleEditorPage() {
   const params = useParams();
@@ -48,6 +57,13 @@ export default function ArticleEditorPage() {
   const [showPublish, setShowPublish] = React.useState(false);
   const [showUnpublish, setShowUnpublish] = React.useState(false);
 
+  // AI proofreader state — Phase 1: darija only ("french" tab present but
+  // inert until Phase 2 introduces title_fr / content_fr columns).
+  const [lang, setLang] = React.useState<ProofreadLang>("darija");
+  const [activeSuggestion, setActiveSuggestion] = React.useState<number | null>(
+    null,
+  );
+
   // Reset the edit draft when a different article loads. Render-time reset —
   // the React-recommended alternative to calling setState inside an effect.
   const [trackedId, setTrackedId] = React.useState(article?.id);
@@ -56,9 +72,10 @@ export default function ArticleEditorPage() {
     setDraft({});
   }
 
-  const merged: ArticleAdminDetail | undefined = article
-    ? { ...article, ...draft } as ArticleAdminDetail
-    : undefined;
+  const merged: ArticleAdminDetail | undefined = React.useMemo(
+    () => (article ? ({ ...article, ...draft } as ArticleAdminDetail) : undefined),
+    [article, draft],
+  );
 
   const saveMutation = useMutation({
     mutationFn: (patch: ArticleUpdate) =>
@@ -114,6 +131,44 @@ export default function ArticleEditorPage() {
   function patch<K extends keyof ArticleUpdate>(key: K, value: ArticleUpdate[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
+
+  // Proofreader hooks — one for the title (fast, short text), one for the
+  // body (longer debounce, fires only when there's enough to evaluate).
+  const titleProofread = useProofreader({
+    articleId: id,
+    text: merged?.title_darija ?? "",
+    lang,
+    field: "title",
+    delayMs: 1500,
+    minChars: 6,
+    enabled: lang === "darija",
+  });
+  const bodyProofread = useProofreader({
+    articleId: id,
+    text: merged?.content_darija ?? "",
+    lang,
+    field: "body",
+    delayMs: 2500,
+    minChars: 40,
+    enabled: lang === "darija",
+  });
+
+  const applySuggestion = React.useCallback(
+    (key: "title_darija" | "content_darija", s: ProofreadSuggestion) => {
+      if (!merged) return;
+      const haystack = merged[key];
+      if (!haystack || !s.original) return;
+      const at = haystack.indexOf(s.original);
+      if (at < 0) {
+        toast("Phrase introuvable (déjà modifiée ?)", "error");
+        return;
+      }
+      const next =
+        haystack.slice(0, at) + s.suggestion + haystack.slice(at + s.original.length);
+      patch(key, next);
+    },
+    [merged, toast],
+  );
 
   function flushFor<K extends keyof ArticleUpdate>(key: K) {
     return () => {
@@ -188,37 +243,86 @@ export default function ArticleEditorPage() {
         </DropdownMenu>
       </header>
 
-      <section className="space-y-2">
-        <Label>Titre (darija)</Label>
-        <Input
-          dir="rtl"
-          value={merged.title_darija}
-          onChange={(e) => patch("title_darija", e.target.value)}
-          onBlur={flushFor("title_darija")}
-          className="font-tajawal text-lg"
-        />
-      </section>
+      {/* Lang tabs — FR inert in Phase 1 (no FR columns yet). */}
+      <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-slate-50 p-0.5 text-xs">
+        {(["darija", "french"] as const).map((opt) => {
+          const disabled = opt === "french";
+          return (
+            <button
+              key={opt}
+              type="button"
+              disabled={disabled}
+              onClick={() => setLang(opt)}
+              title={disabled ? "Disponible en Phase 2 (champs FR)" : undefined}
+              className={cn(
+                "rounded-md px-3 py-1.5 font-medium transition",
+                lang === opt
+                  ? "bg-white text-[var(--color-fg)] shadow-sm"
+                  : "text-[var(--color-muted-foreground)] hover:text-[var(--color-fg)]",
+                disabled && "cursor-not-allowed opacity-50 hover:text-[var(--color-muted-foreground)]",
+              )}
+            >
+              {opt === "darija" ? "Darija" : "Français"}
+            </button>
+          );
+        })}
+      </div>
 
-      <section className="space-y-2">
-        <Label>Extrait</Label>
-        <Textarea
-          dir="rtl"
-          rows={2}
-          value={merged.excerpt_darija}
-          onChange={(e) => patch("excerpt_darija", e.target.value)}
-          onBlur={flushFor("excerpt_darija")}
-          className="font-tajawal"
-        />
-      </section>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Titre (darija)</Label>
+              <TitleScoreBadge
+                result={titleProofread.result}
+                loading={titleProofread.loading}
+                hidden={(merged.title_darija ?? "").trim().length < 6}
+              />
+            </div>
+            <Input
+              dir="rtl"
+              value={merged.title_darija}
+              onChange={(e) => patch("title_darija", e.target.value)}
+              onBlur={flushFor("title_darija")}
+              className="font-tajawal text-lg"
+            />
+          </section>
 
-      <section className="space-y-2">
-        <Label>Contenu (Markdown)</Label>
-        <MarkdownEditor
-          value={merged.content_darija}
-          onChange={(v) => patch("content_darija", v)}
-          onBlur={flushFor("content_darija")}
+          <section className="space-y-2">
+            <Label>Extrait</Label>
+            <Textarea
+              dir="rtl"
+              rows={2}
+              value={merged.excerpt_darija}
+              onChange={(e) => patch("excerpt_darija", e.target.value)}
+              onBlur={flushFor("excerpt_darija")}
+              className="font-tajawal"
+            />
+          </section>
+
+          <section className="space-y-2">
+            <Label>Contenu (Markdown)</Label>
+            <MarkdownEditor
+              value={merged.content_darija}
+              onChange={(v) => patch("content_darija", v)}
+              onBlur={flushFor("content_darija")}
+              suggestions={bodyProofread.result?.suggestions ?? []}
+              activeSuggestion={activeSuggestion}
+              onSuggestionClick={(i) => setActiveSuggestion(i)}
+            />
+          </section>
+        </div>
+
+        <ProofreaderPanel
+          result={bodyProofread.result}
+          loading={bodyProofread.loading}
+          error={bodyProofread.error}
+          onApply={(s) => applySuggestion("content_darija", s)}
+          onRefetch={bodyProofread.refetch}
+          activeIndex={activeSuggestion}
+          onSelect={setActiveSuggestion}
         />
-      </section>
+      </div>
 
       <details className="rounded-lg border border-[var(--color-border)] bg-white">
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
