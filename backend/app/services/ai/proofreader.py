@@ -47,10 +47,14 @@ def _system_prompt(lang: Language, field: Field_) -> str:
     common_rules = (
         "Score 0-100. Be generous: 80+ = publishable; 60-79 = minor fixes; "
         "<60 = significant rewrite. Suggestions: max 8, highest impact first. "
-        "Each suggestion picks a specific *contiguous phrase from the text* as "
-        "'original' (verbatim, so the UI can highlight it). 'suggestion' is "
-        "the proposed replacement (may be empty to suggest deletion). 'reason' "
-        "is one short sentence in French explaining the issue."
+        "Each suggestion's 'original' MUST be an EXACT contiguous substring "
+        "copy-pasted character-for-character from the input — INCLUDING "
+        "Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) vs Latin digits (0123456789), "
+        "punctuation, white-space, line breaks, and any inline markup like "
+        "<bdi>…</bdi>. Do NOT paraphrase, normalize, translate, or shorten. "
+        "If you cannot find an exact substring that needs fixing, skip the "
+        "suggestion. 'suggestion' is the proposed replacement (may be empty "
+        "to indicate deletion). 'reason' is ONE short sentence in French."
     )
 
     if lang == "darija":
