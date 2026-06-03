@@ -29,6 +29,7 @@ from app.schemas.proofread import ProofreadRequest, ProofreadResult
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import Localizer
 from app.services.ai.proofreader import Proofreader
+from app.services.ai.translator import Translator
 from app.services.images.image_generator import ImageGenerator
 from app.services.images.r2_storage import R2Storage
 from app.services.images.replicate_client import ReplicateClient
@@ -274,6 +275,61 @@ async def proofread_article_field(
         admin_email=user.email,
     )
     return result
+
+
+@admin_router.post("/{article_id}/translate-to-fr", response_model=ArticleAdminDetail)
+async def translate_article_to_french(
+    article_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> Article:
+    """Auto-translate the article's Darija fields into French and persist them.
+
+    Overwrites any existing French content — the admin UI is expected to ask
+    the user before calling this when ``title_fr`` is non-empty.
+
+    Backed by Claude Haiku 4.5 with a dedicated translator prompt; result is
+    cached in Redis 30 days keyed by the Darija content hash so retries are
+    free and deterministic.
+    """
+    article = await session.get(Article, article_id)
+    if article is None or article.deleted_at is not None:
+        raise NotFoundError(
+            f"Article {article_id} not found",
+            details={"article_id": article_id},
+        )
+
+    settings = get_settings()
+    async with _redis_for(settings) as redis_client:
+        claude = ClaudeClient(settings.anthropic_api_key)
+        translator = Translator(claude=claude, redis_client=redis_client)
+        result = await translator.translate(
+            title_darija=article.title_darija,
+            excerpt_darija=article.excerpt_darija,
+            content_darija=article.content_darija,
+            meta_title=article.meta_title,
+            meta_description=article.meta_description,
+        )
+
+    article.title_fr = result.title_fr or None
+    article.excerpt_fr = result.excerpt_fr or None
+    article.content_fr = result.content_fr or None
+    article.meta_title_fr = result.meta_title_fr or None
+    article.meta_description_fr = result.meta_description_fr or None
+    article.updated_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(article)
+
+    logger.info(
+        "admin.article.translated_to_fr",
+        article_id=article.id,
+        model=result.model,
+        cached=result.cached,
+        duration_ms=result.duration_ms,
+        content_chars=len(result.content_fr),
+        admin_email=user.email,
+    )
+    return article
 
 
 @admin_router.post("/{article_id}/regenerate-image", response_model=ArticleAdminDetail)
