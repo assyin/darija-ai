@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ImagePlus, Loader2, MoreVertical, Save, Send } from "lucide-react";
 
+import { Languages } from "lucide-react";
+
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import { ProofreaderPanel } from "@/components/admin/proofreader-panel";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -153,6 +155,31 @@ export default function ArticleEditorPage() {
     onError: (err) => toast(`Erreur image: ${(err as Error).message}`, "error"),
   });
 
+  const translateToFrMutation = useMutation({
+    mutationFn: () =>
+      adminApi.post<ArticleAdminDetail>(`/articles/${id}/translate-to-fr`),
+    onSuccess: (next) => {
+      qc.setQueryData(["article", id], next);
+      qc.invalidateQueries({ queryKey: ["articles"] });
+      setLang("french");
+      toast("Traduction française générée", "success");
+    },
+    onError: (err) =>
+      toast(`Erreur traduction: ${(err as Error).message}`, "error"),
+  });
+
+  function startTranslate() {
+    if (
+      merged?.title_fr &&
+      !window.confirm(
+        "Une traduction française existe déjà. La remplacer ?",
+      )
+    ) {
+      return;
+    }
+    translateToFrMutation.mutate();
+  }
+
   function patch<K extends keyof ArticleUpdate>(key: K, value: ArticleUpdate[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
@@ -279,7 +306,7 @@ export default function ArticleEditorPage() {
       </header>
 
       {/* Language tabs — flip every editable field + the proofreader target. */}
-      <div className="inline-flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-slate-50 p-0.5 text-xs">
           {(["darija", "french"] as const).map((opt) => {
             const filled =
@@ -309,10 +336,35 @@ export default function ArticleEditorPage() {
             );
           })}
         </div>
+
+        {/* Auto-translate Darija → French. Visible on the Darija tab as a
+         *  primary action, and on the French tab as "Re-translate" when FR
+         *  is already present. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={startTranslate}
+          disabled={translateToFrMutation.isPending}
+          title={
+            merged.title_fr
+              ? "Re-générer la version française (écrase l'existante)"
+              : "Générer automatiquement la version française via Claude"
+          }
+        >
+          {translateToFrMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Languages className="h-3.5 w-3.5" />
+          )}
+          {merged.title_fr
+            ? "Re-traduire en français"
+            : "Traduire en français (auto)"}
+        </Button>
+
         {lang === "french" && !merged.title_fr && (
           <span className="text-[11px] text-amber-700">
-            Pas encore de traduction française — créez-en une en éditant les
-            champs ci-dessous.
+            Aucune traduction française — utilisez « Traduire en français »
+            ou écrivez-la manuellement.
           </span>
         )}
       </div>
