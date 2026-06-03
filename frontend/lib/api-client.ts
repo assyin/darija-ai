@@ -78,8 +78,14 @@ export const adminApi = {
 };
 
 export const publicApi = {
-  getArticles: (limit: number): Promise<ArticlePublic[]> => {
+  /**
+   * @param lang Pass "fr" to restrict to articles that have a French
+   *             translation (used on /fr listings so we never serve a
+   *             Darija-only article on the French index).
+   */
+  getArticles: (limit: number, lang?: "fr"): Promise<ArticlePublic[]> => {
     const params = new URLSearchParams({ limit: String(limit) });
+    if (lang) params.set("lang", lang);
     return api.get<ArticlePublic[]>(`/articles?${params}`, REVALIDATE_ARTICLES);
   },
 

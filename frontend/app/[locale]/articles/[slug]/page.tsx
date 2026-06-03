@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
+
+import { Link } from "@/i18n/navigation";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { ArticleCTA } from "@/components/public/article-cta";
@@ -77,7 +78,7 @@ export default async function ArticlePage({
   const t = await getTranslations("article");
   const tNav = await getTranslations("nav");
   const related = await publicApi
-    .getArticles(6)
+    .getArticles(6, locale === "fr" ? "fr" : undefined)
     .then((list) => list.filter((a) => a.slug !== slug).slice(0, 3))
     .catch(() => [] as ArticlePublic[]);
   const url = `${SITE_BASE}/articles/${article.slug}`;

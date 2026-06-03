@@ -55,7 +55,10 @@ export default async function HomePage({
 
   const t = await getTranslations("home");
 
-  const articles = await publicApi.getArticles(50).catch(() => []);
+  // /fr home only surfaces articles that actually have a French translation.
+  const articles = await publicApi
+    .getArticles(50, locale === "fr" ? "fr" : undefined)
+    .catch(() => []);
   const featured = articles.slice(0, 3);
   const recent = articles.slice(3, 9);
 
