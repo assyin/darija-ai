@@ -44,17 +44,32 @@ public_router = APIRouter(prefix="/articles", tags=["articles"])
 @public_router.get("", response_model=list[ArticlePublic])
 async def list_public_articles(
     category: str | None = Query(default=None),
+    lang: str | None = Query(
+        default=None,
+        description="When 'fr', restrict to articles that have a French "
+        "translation (title_fr is non-empty). Default returns everything.",
+    ),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
 ) -> list[Article]:
-    """Public list — only published, ordered by published_at DESC."""
+    """Public list — only published, ordered by published_at DESC.
+
+    Pass ``lang=fr`` to limit the listing to articles that have been
+    translated to French (used by the /fr/articles page so the FR locale
+    never shows Darija-only items in its index).
+    """
     stmt = select(Article).where(
         Article.is_published.is_(True),
         Article.deleted_at.is_(None),
     )
     if category:
         stmt = stmt.where(Article.categories.any(category))
+    if lang == "fr":
+        stmt = stmt.where(
+            Article.title_fr.is_not(None),  # type: ignore[union-attr]
+            Article.title_fr != "",  # type: ignore[arg-type]
+        )
     stmt = stmt.order_by(Article.published_at.desc().nullslast()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())

@@ -48,7 +48,11 @@ export default async function ArticlesListPage({
   setRequestLocale(locale);
 
   const t = await getTranslations("articles_list");
-  const articles = await publicApi.getArticles(100).catch(() => []);
+  // On /fr, restrict to articles that have an actual French translation.
+  // Default locale keeps the full Darija index.
+  const articles = await publicApi
+    .getArticles(100, locale === "fr" ? "fr" : undefined)
+    .catch(() => []);
   const [lead, ...rest] = articles;
 
   return (

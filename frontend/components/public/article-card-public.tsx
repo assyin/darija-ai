@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
 
+import { Link } from "@/i18n/navigation";
 import { localizeArticle } from "@/lib/article-localize";
 import { bdiHtml, stripBdi } from "@/lib/bidi";
 import type { ArticlePublic } from "@/lib/types";
