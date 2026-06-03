@@ -15,9 +15,11 @@ from app.core.logging import get_logger
 from app.models.article import Article
 from app.models.raw_article import RawArticle
 from app.models.source import Source
+from app.schemas.translate import TranslateToFrenchResult
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import LocalizedArticle, Localizer
 from app.services.ai.quality_gate import QualityGate
+from app.services.ai.translator import Translator
 from app.services.images.image_generator import ImageGenerationOutcome, ImageGenerator
 from app.services.images.r2_storage import R2Storage
 from app.services.images.replicate_client import ReplicateClient
@@ -66,10 +68,12 @@ class ArticleProcessor:
         localizer: Localizer,
         quality_gate: QualityGate,
         image_generator: ImageGenerator | None,
+        translator: Translator | None = None,
     ) -> None:
         self._localizer = localizer
         self._quality_gate = quality_gate
         self._image_generator = image_generator
+        self._translator = translator
 
     @classmethod
     def from_settings(
@@ -78,6 +82,7 @@ class ArticleProcessor:
         redis: Redis,
         *,
         skip_image: bool = False,
+        skip_translation: bool = False,
     ) -> ArticleProcessor:
         provider = ClaudeClient(settings.anthropic_api_key)
         localizer = Localizer(
@@ -86,10 +91,14 @@ class ArticleProcessor:
             prompt_version=settings.localizer_prompt_version,
         )
         image_generator = None if skip_image else _build_image_generator(settings)
+        # The same ClaudeClient is reused for the Translator — both share the
+        # Anthropic key + retry policy.
+        translator = None if skip_translation else Translator(claude=provider, redis_client=redis)
         return cls(
             localizer=localizer,
             quality_gate=QualityGate(),
             image_generator=image_generator,
+            translator=translator,
         )
 
     async def process(self, raw_article_id: int) -> ProcessOutcome:
@@ -171,7 +180,36 @@ class ArticleProcessor:
                     duration_ms=_elapsed_ms(t0),
                 )
 
-        article_id = await self._persist_draft(raw, article, image_outcome)
+        # Auto-translate Darija → French. Fail-soft: a translation error
+        # leaves the FR fields null but never blocks the draft (the admin can
+        # click "Re-traduire en français" later to retry).
+        translation: TranslateToFrenchResult | None = None
+        if self._translator is not None:
+            try:
+                translation = await self._translator.translate(
+                    title_darija=article.title_darija,
+                    excerpt_darija=article.excerpt_darija,
+                    content_darija=article.content_darija,
+                    meta_title=article.meta_title,
+                    meta_description=article.meta_description,
+                )
+                log.info(
+                    "article_processor.translated_to_fr",
+                    raw_article_id=raw_article_id,
+                    cached=translation.cached,
+                    content_fr_chars=len(translation.content_fr),
+                    duration_ms=translation.duration_ms,
+                )
+            except Exception as exc:
+                # Don't block — keep the draft, the admin can re-translate.
+                log.warning(
+                    "article_processor.translation_failed_soft",
+                    raw_article_id=raw_article_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+
+        article_id = await self._persist_draft(raw, article, image_outcome, translation)
         await self._set_status(raw_article_id, STATUS_TRANSLATED)
         duration_ms = _elapsed_ms(t0)
         log.info(
@@ -221,9 +259,17 @@ class ArticleProcessor:
         raw: RawArticle,
         article: LocalizedArticle,
         image_outcome: ImageGenerationOutcome | None,
+        translation: TranslateToFrenchResult | None,
     ) -> int:
         """Upsert an Article row keyed by ``raw_article_id``, always unpublished."""
         assert raw.id is not None  # persisted row always has a PK
+        # Pre-extract FR fields once so the insert/update branches stay symmetric.
+        title_fr = translation.title_fr or None if translation else None
+        excerpt_fr = translation.excerpt_fr or None if translation else None
+        content_fr = translation.content_fr or None if translation else None
+        meta_title_fr = translation.meta_title_fr or None if translation else None
+        meta_description_fr = translation.meta_description_fr or None if translation else None
+
         async with AsyncSessionLocal() as session:
             existing = await session.scalar(
                 select(Article).where(col(Article.raw_article_id) == raw.id)
@@ -244,6 +290,11 @@ class ArticleProcessor:
                     reading_time_minutes=article.reading_time_minutes,
                     word_count=article.word_count,
                     is_published=False,
+                    title_fr=title_fr,
+                    excerpt_fr=excerpt_fr,
+                    content_fr=content_fr,
+                    meta_title_fr=meta_title_fr,
+                    meta_description_fr=meta_description_fr,
                 )
                 session.add(row)
             else:
@@ -260,6 +311,15 @@ class ArticleProcessor:
                 existing.tags = article.tags
                 existing.reading_time_minutes = article.reading_time_minutes
                 existing.word_count = article.word_count
+                # Only overwrite FR fields when a fresh translation was produced —
+                # don't clobber an existing FR draft when this run's translator
+                # silently failed.
+                if translation is not None:
+                    existing.title_fr = title_fr
+                    existing.excerpt_fr = excerpt_fr
+                    existing.content_fr = content_fr
+                    existing.meta_title_fr = meta_title_fr
+                    existing.meta_description_fr = meta_description_fr
                 existing.updated_at = datetime.now(UTC)
                 row = existing
             await session.commit()
