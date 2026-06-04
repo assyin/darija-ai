@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -37,6 +38,12 @@ class Article(SQLModel, table=True):
             "idx_articles_is_published_published_at",
             "is_published",
             text("published_at DESC"),
+        ),
+        Index(
+            "idx_articles_ready_to_publish",
+            "proofread_ready_to_publish",
+            "is_published",
+            text("created_at DESC"),
         ),
     )
 
@@ -82,6 +89,23 @@ class Article(SQLModel, table=True):
     )
     reading_time_minutes: int | None = Field(default=None, nullable=True)
     word_count: int | None = Field(default=None, nullable=True)
+    # Auto-flag mode (migration 8a4b2e9c5f17): the pipeline runs the AI
+    # Proofreader after Translator and stores the body scores. Per
+    # CLAUDE.md §1 these are hints — they NEVER auto-publish.
+    proofread_score_darija: int | None = Field(default=None, nullable=True)
+    proofread_score_fr: int | None = Field(default=None, nullable=True)
+    proofread_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    proofread_ready_to_publish: bool = Field(
+        default=False,
+        sa_column=Column(
+            Boolean(),
+            nullable=False,
+            server_default=text("false"),
+        ),
+    )
     is_published: bool = Field(default=False, nullable=False)
     published_at: datetime | None = Field(
         default=None,

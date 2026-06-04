@@ -20,6 +20,7 @@ from app.schemas.translate import TranslateToFrenchResult
 from app.services.ai.ai_logging import LoggingLLMProvider, persist_ai_log
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import LocalizedArticle, Localizer
+from app.services.ai.proofreader import Proofreader
 from app.services.ai.quality_gate import QualityGate
 from app.services.ai.translator import Translator
 from app.services.images.image_generator import ImageGenerationOutcome, ImageGenerator
@@ -52,6 +53,21 @@ class ProcessOutcome:
     duration_ms: int = 0
 
 
+@dataclass
+class ProofreadOutcome:
+    """In-pipeline result of the auto-flag proofread step.
+
+    Scores are ``None`` when the call fails or the language was not produced
+    (e.g. translator skipped). ``ready_to_publish`` is the computed hint that
+    surfaces as a green badge in the admin list — it never auto-publishes.
+    """
+
+    score_darija: int | None = None
+    score_fr: int | None = None
+    ready_to_publish: bool = False
+    proofread_at: datetime | None = None
+
+
 class ArticleProcessor:
     """Localize one raw article into a Darija draft (``is_published=False``).
 
@@ -71,11 +87,15 @@ class ArticleProcessor:
         quality_gate: QualityGate,
         image_generator: ImageGenerator | None,
         translator: Translator | None = None,
+        proofreader: Proofreader | None = None,
+        proofread_publish_ready_threshold: int = 85,
     ) -> None:
         self._localizer = localizer
         self._quality_gate = quality_gate
         self._image_generator = image_generator
         self._translator = translator
+        self._proofreader = proofreader
+        self._proofread_threshold = proofread_publish_ready_threshold
 
     @classmethod
     def from_settings(
@@ -85,6 +105,7 @@ class ArticleProcessor:
         *,
         skip_image: bool = False,
         skip_translation: bool = False,
+        skip_proofread: bool = False,
     ) -> ArticleProcessor:
         # The provider is wrapped so every Claude call lands in ai_logs.
         # Localizer + Translator share the same instance — costs roll up by
@@ -97,11 +118,22 @@ class ArticleProcessor:
         )
         image_generator = None if skip_image else _build_image_generator(settings)
         translator = None if skip_translation else Translator(provider=provider, redis_client=redis)
+        # Proofreader uses OpenAI — only built when the key is set, otherwise
+        # the auto-flag step is skipped silently and scores stay NULL.
+        proofreader: Proofreader | None = None
+        if not skip_proofread and settings.openai_api_key:
+            proofreader = Proofreader(
+                api_key=settings.openai_api_key,
+                redis_client=redis,
+                model=settings.proofreader_model,
+            )
         return cls(
             localizer=localizer,
             quality_gate=QualityGate(),
             image_generator=image_generator,
             translator=translator,
+            proofreader=proofreader,
+            proofread_publish_ready_threshold=settings.proofread_publish_ready_threshold,
         )
 
     async def process(self, raw_article_id: int) -> ProcessOutcome:
@@ -233,7 +265,17 @@ class ArticleProcessor:
                     error_type=exc.__class__.__name__,
                 )
 
-        article_id = await self._persist_draft(raw, article, image_outcome, translation)
+        # Auto-flag mode: run the AI Proofreader on the produced body in each
+        # populated language. The result is a hint only — it never publishes
+        # (CLAUDE.md §1). Fail-soft: scores stay NULL if anything goes wrong;
+        # the admin's manual Re-évaluer button can be used to retry.
+        proofread = await self._proofread_or_skip(
+            raw_article_id=raw_article_id,
+            content_darija=article.content_darija,
+            content_fr=translation.content_fr if translation else None,
+        )
+
+        article_id = await self._persist_draft(raw, article, image_outcome, translation, proofread)
         await self._set_status(raw_article_id, STATUS_TRANSLATED)
         duration_ms = _elapsed_ms(t0)
         log.info(
@@ -241,6 +283,9 @@ class ArticleProcessor:
             raw_article_id=raw_article_id,
             article_id=article_id,
             word_count=article.word_count,
+            proofread_score_darija=proofread.score_darija,
+            proofread_score_fr=proofread.score_fr,
+            proofread_ready_to_publish=proofread.ready_to_publish,
             duration_ms=duration_ms,
         )
         return ProcessOutcome(
@@ -266,6 +311,93 @@ class ArticleProcessor:
             await session.refresh(raw)
             return raw, source_name
 
+    async def _proofread_or_skip(
+        self,
+        *,
+        raw_article_id: int,
+        content_darija: str,
+        content_fr: str | None,
+    ) -> ProofreadOutcome:
+        """Run the Proofreader on the body in each language; fail-soft.
+
+        Returns a :class:`ProofreadOutcome` even when the Proofreader is
+        disabled (no key, ``skip_proofread=True``) — in that case scores are
+        ``None`` and ``ready_to_publish`` is ``False``. The pipeline persists
+        the result either way so the admin sees a stable shape.
+        """
+        if self._proofreader is None:
+            log.info(
+                "article_processor.proofread_skipped",
+                raw_article_id=raw_article_id,
+                reason="proofreader_disabled",
+            )
+            return ProofreadOutcome()
+
+        score_darija: int | None = None
+        score_fr: int | None = None
+
+        try:
+            result_darija = await self._proofreader.proofread(
+                text=content_darija,
+                lang="darija",
+                field="body",
+            )
+            score_darija = result_darija.score
+        except Exception as exc:
+            log.warning(
+                "article_processor.proofread_darija_failed_soft",
+                raw_article_id=raw_article_id,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
+
+        if content_fr:
+            try:
+                result_fr = await self._proofreader.proofread(
+                    text=content_fr,
+                    lang="french",
+                    field="body",
+                )
+                score_fr = result_fr.score
+            except Exception as exc:
+                log.warning(
+                    "article_processor.proofread_fr_failed_soft",
+                    raw_article_id=raw_article_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+
+        # Compute ready-to-publish: every populated language must clear the
+        # threshold. A missing language (FR not produced) does not block.
+        threshold = self._proofread_threshold
+        ready = (
+            score_darija is not None
+            and score_darija >= threshold
+            and (score_fr is None or score_fr >= threshold)
+        )
+
+        # Only mark a proofread_at timestamp when SOMETHING was scored — a
+        # double-failure run should not clobber prior scores in the upsert
+        # branch of _persist_draft.
+        any_score = score_darija is not None or score_fr is not None
+        proofread_at = datetime.now(UTC) if any_score else None
+
+        log.info(
+            "article_processor.proofread_completed",
+            raw_article_id=raw_article_id,
+            score_darija=score_darija,
+            score_fr=score_fr,
+            threshold=threshold,
+            ready_to_publish=ready,
+            persisted=any_score,
+        )
+        return ProofreadOutcome(
+            score_darija=score_darija,
+            score_fr=score_fr,
+            ready_to_publish=ready,
+            proofread_at=proofread_at,
+        )
+
     async def _set_status(
         self, raw_article_id: int, status: str, *, reason: str | None = None
     ) -> None:
@@ -284,6 +416,7 @@ class ArticleProcessor:
         article: LocalizedArticle,
         image_outcome: ImageGenerationOutcome | None,
         translation: TranslateToFrenchResult | None,
+        proofread: ProofreadOutcome,
     ) -> int:
         """Upsert an Article row keyed by ``raw_article_id``, always unpublished."""
         assert raw.id is not None  # persisted row always has a PK
@@ -319,6 +452,10 @@ class ArticleProcessor:
                     content_fr=content_fr,
                     meta_title_fr=meta_title_fr,
                     meta_description_fr=meta_description_fr,
+                    proofread_score_darija=proofread.score_darija,
+                    proofread_score_fr=proofread.score_fr,
+                    proofread_at=proofread.proofread_at,
+                    proofread_ready_to_publish=proofread.ready_to_publish,
                 )
                 session.add(row)
             else:
@@ -344,6 +481,15 @@ class ArticleProcessor:
                     existing.content_fr = content_fr
                     existing.meta_title_fr = meta_title_fr
                     existing.meta_description_fr = meta_description_fr
+                # Same rule for proofread scores: only overwrite when this
+                # run actually computed something. A failed proofread leaves
+                # the existing scores untouched (the admin's prior manual
+                # Re-évaluer may still be the source of truth).
+                if proofread.proofread_at is not None:
+                    existing.proofread_score_darija = proofread.score_darija
+                    existing.proofread_score_fr = proofread.score_fr
+                    existing.proofread_at = proofread.proofread_at
+                    existing.proofread_ready_to_publish = proofread.ready_to_publish
                 existing.updated_at = datetime.now(UTC)
                 row = existing
             await session.commit()
