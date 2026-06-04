@@ -9,13 +9,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Accept callbackUrl when redirected here by an expired session, so the user
-// lands back on the page they were on (e.g. /admin/articles/16). Restrict to
-// internal admin paths — never honor an attacker-supplied external URL.
+// Accept callbackUrl when redirected here by an expired session OR by the
+// NextAuth middleware. NextAuth produces a FULL URL (e.g.
+// "https://example.com/admin/costs"), our own SESSION_EXPIRED redirect
+// produces a relative path ("/admin/costs"). Both shapes are valid; we
+// reduce to the pathname + search and then check it's an internal /admin/*
+// route. Anything else (off-host, JS, data:) → safe default. Never honour
+// an attacker-supplied external URL.
 function sanitizeCallbackUrl(value: string | null): string {
-  if (!value) return "/admin/articles";
-  if (!value.startsWith("/admin")) return "/admin/articles";
-  return value;
+  const FALLBACK = "/admin/articles";
+  if (!value) return FALLBACK;
+  let pathname: string;
+  if (value.startsWith("/")) {
+    pathname = value;
+  } else {
+    try {
+      const url = new URL(value);
+      if (typeof window !== "undefined" && url.origin !== window.location.origin) {
+        return FALLBACK;
+      }
+      pathname = url.pathname + url.search;
+    } catch {
+      return FALLBACK;
+    }
+  }
+  return pathname.startsWith("/admin") ? pathname : FALLBACK;
 }
 
 export default function LoginPage() {
