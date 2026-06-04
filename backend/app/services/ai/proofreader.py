@@ -33,7 +33,7 @@ from app.services.ai.pricing import compute_cost
 
 logger = get_logger("services.ai.proofreader")
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 h
 
 _VALID_SEVERITIES: set[Severity] = {"low", "medium", "high"}
@@ -48,16 +48,40 @@ def _system_prompt(lang: Language, field: Field_) -> str:
     inputs (titles can't be evaluated like full bodies).
     """
     common_rules = (
-        "Score 0-100. Be generous: 80+ = publishable; 60-79 = minor fixes; "
-        "<60 = significant rewrite. Suggestions: max 8, highest impact first. "
-        "Each suggestion's 'original' MUST be an EXACT contiguous substring "
-        "copy-pasted character-for-character from the input — INCLUDING "
-        "Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) vs Latin digits (0123456789), "
-        "punctuation, white-space, line breaks, and any inline markup like "
-        "<bdi>…</bdi>. Do NOT paraphrase, normalize, translate, or shorten. "
-        "If you cannot find an exact substring that needs fixing, skip the "
-        "suggestion. 'suggestion' is the proposed replacement (may be empty "
-        "to indicate deletion). 'reason' is ONE short sentence in French."
+        "Evaluate FOUR DIMENSIONS INDEPENDENTLY, on 0-100 each. Be PRECISE, not "
+        "generous. Distinguish 82 from 88. Do NOT anchor to a 'publishable' "
+        "threshold — the threshold is computed downstream.\n\n"
+        "Calibration (apply per dimension):\n"
+        "  • 90-100 = excellent, professional editor would not change anything.\n"
+        "  • 80-89 = strong, only cosmetic polish would improve it.\n"
+        "  • 70-79 = solid but has at least 2-3 concrete issues that the editor "
+        "should fix before publishing.\n"
+        "  • 60-69 = noticeable issues; needs a thorough pass.\n"
+        "  • 50-59 = weak; multiple paragraphs need rework.\n"
+        "  • <50 = poor; rewrite from scratch.\n\n"
+        "Sub-scores (be specific, do not copy values across dimensions):\n"
+        "  • grammar — verb conjugation, agreement, syntax, punctuation.\n"
+        "  • naturalness — does it read like a Moroccan tech editor wrote it, "
+        "or like a translation? MSA disguised as Darija = penalty.\n"
+        "  • clarity — does each sentence convey ONE clear idea? Are technical "
+        "terms explained on first mention? Is the structure logical?\n"
+        "  • consistency — does the voice/tone stay even? Are technical terms "
+        "rendered the same way throughout? Is the audience-level stable?\n\n"
+        "Distribute the four scores honestly. It is normal for grammar to be "
+        "85 while naturalness is 72 — that is exactly the signal we want. "
+        "DO NOT collapse all four to the same number.\n\n"
+        "Top-level 'score' MUST be the MINIMUM of the four sub-scores — the "
+        "worst dimension dominates. (Server will recompute and reject the "
+        "response if min(sub-scores) ≠ score.)\n\n"
+        "Suggestions: max 8, highest-impact first. Each suggestion's "
+        "'original' MUST be an EXACT contiguous substring copy-pasted "
+        "character-for-character from the input — INCLUDING Arabic-Indic "
+        "digits (٠١٢٣٤٥٦٧٨٩) vs Latin digits (0123456789), punctuation, "
+        "white-space, line breaks, and any inline markup like <bdi>…</bdi>. "
+        "Do NOT paraphrase, normalize, translate, or shorten. If you cannot "
+        "find an exact substring that needs fixing, skip the suggestion. "
+        "'suggestion' is the proposed replacement (may be empty to indicate "
+        "deletion). 'reason' is ONE short sentence in French."
     )
 
     if lang == "darija":
@@ -120,12 +144,26 @@ def _user_prompt(text: str) -> str:
     return f"Evaluate this text and return JSON only:\n\n---\n{text}\n---"
 
 
-# Schema passed to OpenAI structured-output (json_schema response_format)
+# Schema passed to OpenAI structured-output (json_schema response_format).
+# v2: the four sub-scores are required; the top-level `score` MUST equal the
+# minimum of the four (server validates and re-derives if the model drifts).
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["score", "summary", "suggestions"],
+    "required": [
+        "grammar_score",
+        "naturalness_score",
+        "clarity_score",
+        "consistency_score",
+        "score",
+        "summary",
+        "suggestions",
+    ],
     "properties": {
+        "grammar_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "naturalness_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "clarity_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "consistency_score": {"type": "integer", "minimum": 0, "maximum": 100},
         "score": {"type": "integer", "minimum": 0, "maximum": 100},
         "summary": {"type": "string", "maxLength": 400},
         "suggestions": {
@@ -295,11 +333,59 @@ class Proofreader:
             for s in parsed.get("suggestions", [])
             if s.get("original")
         ]
-        score = int(parsed.get("score", 0))
+
+        # v2: pull the four sub-scores. If the model dropped any of them
+        # (older cached structure, partial response), they default to None
+        # and we fall back to the legacy single-score path.
+        def _clamp(v: object) -> int | None:
+            if v is None:
+                return None
+            try:
+                # int() accepts str | bytes | SupportsInt; cast keeps mypy honest
+                # while letting bad values fall to the except below.
+                n: int = int(v)  # type: ignore[call-overload]
+            except (TypeError, ValueError):
+                return None
+            return max(0, min(100, n))
+
+        grammar = _clamp(parsed.get("grammar_score"))
+        naturalness = _clamp(parsed.get("naturalness_score"))
+        clarity = _clamp(parsed.get("clarity_score"))
+        consistency = _clamp(parsed.get("consistency_score"))
+        model_score = _clamp(parsed.get("score"))
         summary = str(parsed.get("summary", ""))
 
+        # Server is the source of truth for the top-level score: take the
+        # MIN of the populated sub-scores. If none arrived (degenerate v1
+        # response), fall back to whatever the model returned.
+        sub_scores = [s for s in (grammar, naturalness, clarity, consistency) if s is not None]
+        if sub_scores:
+            score = min(sub_scores)
+        elif model_score is not None:
+            score = model_score
+        else:
+            score = 0
+
+        if model_score is not None and sub_scores and model_score != score:
+            logger.warning(
+                "proofreader.score_corrected",
+                model=self._model,
+                lang=lang,
+                field=field,
+                model_score=model_score,
+                derived_score=score,
+                grammar=grammar,
+                naturalness=naturalness,
+                clarity=clarity,
+                consistency=consistency,
+            )
+
         result = ProofreadResult(
-            score=max(0, min(100, score)),
+            score=score,
+            grammar_score=grammar,
+            naturalness_score=naturalness,
+            clarity_score=clarity,
+            consistency_score=consistency,
             summary=summary,
             suggestions=suggestions,
             lang=lang,
@@ -313,6 +399,10 @@ class Proofreader:
         cache_payload = json.dumps(
             {
                 "score": result.score,
+                "grammar_score": result.grammar_score,
+                "naturalness_score": result.naturalness_score,
+                "clarity_score": result.clarity_score,
+                "consistency_score": result.consistency_score,
                 "summary": result.summary,
                 "suggestions": [s.model_dump() for s in result.suggestions],
             },
@@ -326,6 +416,10 @@ class Proofreader:
             lang=lang,
             field=field,
             score=result.score,
+            grammar=grammar,
+            naturalness=naturalness,
+            clarity=clarity,
+            consistency=consistency,
             num_suggestions=len(result.suggestions),
             duration_ms=duration_ms,
             tokens_used=getattr(response.usage, "total_tokens", None),
