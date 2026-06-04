@@ -47,7 +47,20 @@ out/
 
 # Logs
 *.log
+*.err
 logs/
+
+# Claude Code runtime state (per-machine, not committed)
+.claude/scheduled_tasks.lock
+.claude/projects/
+
+# Local screenshots, design mockups, ad-hoc captures — keep the repo lean
+# and avoid leaking screenshots into a public repo. Put designs in `docs/`
+# when they belong with the project history.
+SCREEN/
+/website-design-template*.png
+/chagtpt*.png
+/ChatGPT*.png
 
 # OS
 Thumbs.db

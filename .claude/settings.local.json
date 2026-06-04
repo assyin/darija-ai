@@ -5,7 +5,9 @@
       "Bash(rm -f frontend_dev.log)",
       "Bash(pnpm dev *)",
       "PowerShell(Get-Process *)",
-      "Bash(pnpm exec node -e ' *)"
+      "Bash(pnpm exec node -e ' *)",
+      "Bash(scp -i ~/.ssh/hetzner_megabuy -o StrictHostKeyChecking=no /tmp/verify.sql root@135.181.149.237:/tmp/v.sql)",
+      "Bash(ssh -i ~/.ssh/hetzner_megabuy -o StrictHostKeyChecking=no root@135.181.149.237 'docker cp /tmp/v.sql infra-postgres-1:/tmp/v.sql && docker exec infra-postgres-1 psql -U darija -d darija_ai -f /tmp/v.sql')"
     ]
   }
 }
