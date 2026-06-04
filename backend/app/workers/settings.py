@@ -8,6 +8,7 @@ from arq.connections import RedisSettings
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis_client
+from app.workers.jobs.check_daily_ai_spend import check_daily_ai_spend
 from app.workers.jobs.fetch_articles import fetch_articles
 from app.workers.jobs.process_articles import process_one, process_pending
 from app.workers.jobs.retry_failed import retry_failed
@@ -45,6 +46,7 @@ class WorkerSettings:
         process_pending,
         process_one,
         retry_failed,
+        check_daily_ai_spend,
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown
@@ -57,4 +59,7 @@ class WorkerSettings:
         cron(process_pending, minute={5, 15, 25, 35, 45, 55}),
         # Retry failed articles once an hour.
         cron(retry_failed, minute={20}),
+        # Hourly AI-spend ceiling check (CLAUDE.md §5). Fires Sentry once
+        # per day when today's spend crosses ai_spend_daily_threshold_usd.
+        cron(check_daily_ai_spend, minute={50}),
     ]

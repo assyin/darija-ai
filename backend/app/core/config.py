@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     public_rate_limit_max_requests: int = 60
     public_rate_limit_window_seconds: int = 60
 
+    # AI cost budget — surfaced in the admin cost dashboard and used by the
+    # hourly `check_daily_ai_spend` cron to fire a Sentry alert when crossed.
+    # CLAUDE.md §1: $50/month infra cap; §5: $5/day Sentry alert threshold.
+    ai_monthly_cap_usd: float = 50.0
+    ai_spend_daily_threshold_usd: float = 5.0
+
     @property
     def is_dev(self) -> bool:
         return self.environment == "dev"
