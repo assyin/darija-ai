@@ -83,6 +83,37 @@ class ArticlePublicDetail(ArticlePublic):
     meta_description_fr: str | None = None
 
 
+class BulkProofreadRequest(BaseModel):
+    """Body for POST /admin/articles/bulk-evaluate-proofread.
+
+    Defaults target the common case: re-score the drafts that were created
+    before the auto-flag pipeline shipped (or that the Proofreader silently
+    failed on). The admin can opt to re-score *everything* by flipping the
+    flags off.
+    """
+
+    only_drafts: bool = True
+    only_unevaluated: bool = True
+
+
+class BulkProofreadResult(BaseModel):
+    """Summary returned to the admin after a bulk-evaluate run."""
+
+    evaluated: int = Field(description="Articles that received at least one new score.")
+    skipped: int = Field(description="Articles that did not match the filters.")
+    failed: int = Field(description="Articles where every Proofreader call errored.")
+    ready_after: int = Field(
+        description=(
+            "Articles flagged 'ready to publish' after this run "
+            "(cumulative across all drafts)."
+        ),
+    )
+    duration_seconds: float = Field(description="Server-side wall-clock time, for UI sizing.")
+    cost_estimate_usd: str = Field(
+        description="Best-effort total cost of the run, summed from per-call estimates.",
+    )
+
+
 class ArticleUpdate(BaseModel):
     """PATCH body. All fields optional; only provided ones are updated."""
 

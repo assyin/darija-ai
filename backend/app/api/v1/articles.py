@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import math
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from app.core.config import Settings, get_settings
 from app.core.db import AsyncSessionLocal, get_db
@@ -23,6 +27,8 @@ from app.schemas.article import (
     ArticlePublic,
     ArticlePublicDetail,
     ArticleUpdate,
+    BulkProofreadRequest,
+    BulkProofreadResult,
 )
 from app.schemas.auth import AdminUser
 from app.schemas.proofread import ProofreadRequest, ProofreadResult
@@ -183,6 +189,222 @@ async def update_article_admin(
     await session.commit()
     await session.refresh(article)
     return article
+
+
+# Per-call cost estimate for gpt-4o-mini Proofreader runs. The real cost is
+# attributed in ai_logs (PR #22) at the actual token usage; this estimate is
+# only used to size the bulk-evaluate summary the admin sees.
+_PROOFREAD_CALL_COST_USD = Decimal("0.0008")
+
+# Bound concurrency so we don't burst into OpenAI rate limits. Five articles
+# = up to 10 concurrent Proofreader calls (Darija + FR), which stays well
+# inside the gpt-4o-mini RPM budget while finishing 53 drafts in ~30-50 s.
+_BULK_PROOFREAD_CONCURRENCY = 5
+
+
+@admin_router.post(
+    "/bulk-evaluate-proofread",
+    response_model=BulkProofreadResult,
+)
+async def bulk_evaluate_proofread(
+    payload: BulkProofreadRequest,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> BulkProofreadResult:
+    """Run the AI Proofreader retroactively on already-persisted articles.
+
+    Default filters target the common case introduced when PR #25 added the
+    auto-flag pipeline: drafts created before that shipped have no scores
+    yet. This endpoint scores them in one shot so the editor can use the
+    "Prêts à publier" filter on the existing backlog.
+
+    Concurrency is bounded by ``_BULK_PROOFREAD_CONCURRENCY`` to avoid
+    bursting into OpenAI rate limits. Each article's DB update happens in
+    its own session so concurrent successes don't contend.
+
+    Fail-soft per-article: a Proofreader exception on one article does NOT
+    abort the run; it counts toward ``failed`` in the summary.
+    """
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise ExternalServiceError(
+            "OpenAI API key not configured",
+            details={"setting": "OPENAI_API_KEY"},
+        )
+
+    stmt = select(Article).where(Article.deleted_at.is_(None))
+    if payload.only_drafts:
+        stmt = stmt.where(Article.is_published.is_(False))
+    if payload.only_unevaluated:
+        stmt = stmt.where(col(Article.proofread_at).is_(None))
+    stmt = stmt.order_by(Article.created_at.asc())
+    targets = list((await session.execute(stmt)).scalars().all())
+
+    if not targets:
+        return BulkProofreadResult(
+            evaluated=0,
+            skipped=0,
+            failed=0,
+            ready_after=await _count_ready_drafts(session),
+            duration_seconds=0.0,
+            cost_estimate_usd=str(Decimal("0")),
+        )
+
+    logger.info(
+        "admin.articles.bulk_proofread.start",
+        admin_email=user.email,
+        target_count=len(targets),
+        only_drafts=payload.only_drafts,
+        only_unevaluated=payload.only_unevaluated,
+    )
+
+    threshold = settings.proofread_publish_ready_threshold
+    semaphore = asyncio.Semaphore(_BULK_PROOFREAD_CONCURRENCY)
+    start = time.perf_counter()
+
+    async with _redis_for(settings) as redis_client:
+        proofreader = Proofreader(
+            api_key=settings.openai_api_key,
+            redis_client=redis_client,
+            model=settings.proofreader_model,
+        )
+
+        async def _process(article_id: int) -> tuple[bool, bool, int]:
+            """Returns (evaluated, failed_both, successful_call_count)."""
+            async with semaphore:
+                return await _proofread_one_article(
+                    article_id=article_id,
+                    proofreader=proofreader,
+                    threshold=threshold,
+                )
+
+        results = await asyncio.gather(
+            *(_process(int(a.id)) for a in targets if a.id is not None),
+            return_exceptions=False,
+        )
+
+    evaluated = sum(1 for evaluated_, _, _ in results if evaluated_)
+    failed = sum(1 for _, failed_both, _ in results if failed_both)
+    successful_calls = sum(calls for _, _, calls in results)
+    cost_estimate = _PROOFREAD_CALL_COST_USD * successful_calls
+    duration_seconds = round(time.perf_counter() - start, 2)
+    ready_after = await _count_ready_drafts(session)
+
+    logger.info(
+        "admin.articles.bulk_proofread.completed",
+        admin_email=user.email,
+        evaluated=evaluated,
+        failed=failed,
+        ready_after=ready_after,
+        successful_calls=successful_calls,
+        cost_estimate_usd=str(cost_estimate),
+        duration_seconds=duration_seconds,
+    )
+
+    return BulkProofreadResult(
+        evaluated=evaluated,
+        skipped=0,
+        failed=failed,
+        ready_after=ready_after,
+        duration_seconds=duration_seconds,
+        cost_estimate_usd=str(cost_estimate),
+    )
+
+
+async def _count_ready_drafts(session: AsyncSession) -> int:
+    """Count drafts currently flagged ready_to_publish — for the summary card."""
+    stmt = (
+        select(Article)
+        .where(Article.deleted_at.is_(None))
+        .where(Article.is_published.is_(False))
+        .where(Article.proofread_ready_to_publish.is_(True))
+    )
+    return len(list((await session.execute(stmt)).scalars().all()))
+
+
+async def _proofread_one_article(
+    *,
+    article_id: int,
+    proofreader: Proofreader,
+    threshold: int,
+) -> tuple[bool, bool, int]:
+    """Score one article's body in each populated language; update the row.
+
+    Returns ``(evaluated, failed_both, successful_calls)`` where:
+
+    - ``evaluated`` — at least one score landed.
+    - ``failed_both`` — every attempted call errored (counted toward
+      ``failed`` in the summary).
+    - ``successful_calls`` — for cost attribution in the summary.
+
+    Each call is logged to ``ai_logs`` inside ``Proofreader.proofread`` —
+    the cost dashboard ``/admin/costs`` shows the bulk run automatically.
+    """
+    async with AsyncSessionLocal() as own_session:
+        article = await own_session.get(Article, article_id)
+        if article is None or article.deleted_at is not None:
+            return False, False, 0
+
+        score_darija: int | None = None
+        score_fr: int | None = None
+        successful_calls = 0
+        attempted_calls = 0
+
+        try:
+            attempted_calls += 1
+            result = await proofreader.proofread(
+                text=article.content_darija,
+                lang="darija",
+                field="body",
+            )
+            score_darija = result.score
+            successful_calls += 1
+        except Exception as exc:
+            logger.warning(
+                "admin.articles.bulk_proofread.darija_failed_soft",
+                article_id=article_id,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
+
+        if article.content_fr:
+            try:
+                attempted_calls += 1
+                result_fr = await proofreader.proofread(
+                    text=article.content_fr,
+                    lang="french",
+                    field="body",
+                )
+                score_fr = result_fr.score
+                successful_calls += 1
+            except Exception as exc:
+                logger.warning(
+                    "admin.articles.bulk_proofread.fr_failed_soft",
+                    article_id=article_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+
+        evaluated = score_darija is not None or score_fr is not None
+        failed_both = attempted_calls > 0 and not evaluated
+        if not evaluated:
+            return False, failed_both, successful_calls
+
+        # Same readiness rule as the pipeline: every populated language
+        # must clear the threshold; a missing FR is not blocking.
+        ready = (
+            score_darija is not None
+            and score_darija >= threshold
+            and (score_fr is None or score_fr >= threshold)
+        )
+
+        article.proofread_score_darija = score_darija
+        article.proofread_score_fr = score_fr
+        article.proofread_at = datetime.now(UTC)
+        article.proofread_ready_to_publish = ready
+        article.updated_at = datetime.now(UTC)
+        await own_session.commit()
+        return True, False, successful_calls
 
 
 @admin_router.post("/{article_id}/publish", response_model=ArticleAdminDetail)

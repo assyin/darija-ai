@@ -1,21 +1,43 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Sparkles } from "lucide-react";
 
 import { ArticleCard } from "@/components/admin/article-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ArticleAdmin } from "@/lib/types";
 
 type Filter = "all" | "drafts" | "ready" | "published";
 
+interface BulkProofreadResult {
+  evaluated: number;
+  skipped: number;
+  failed: number;
+  ready_after: number;
+  duration_seconds: number;
+  cost_estimate_usd: string;
+}
+
 export default function ArticlesListPage() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
+  const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["articles", filter],
@@ -27,12 +49,31 @@ export default function ArticlesListPage() {
     },
   });
 
+  const bulkEvaluate = useMutation({
+    mutationFn: () =>
+      adminApi.post<BulkProofreadResult>("/articles/bulk-evaluate-proofread", {
+        only_drafts: true,
+        only_unevaluated: true,
+      }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["articles"] });
+      setBulkDialogOpen(false);
+      const summary = `${result.evaluated} évalués · ${result.ready_after} prêts à publier · ~$${result.cost_estimate_usd} en ${result.duration_seconds.toFixed(1)} s`;
+      toast(summary, "success");
+    },
+    onError: (err) => {
+      toast(`Erreur: ${(err as Error).message}`, "error");
+    },
+  });
+
   const all = data ?? [];
   const drafts = all.filter((a) => !a.is_published);
   const published = all.filter((a) => a.is_published);
   // "Ready to publish" = drafts that the AI Proofreader greenlighted. Per
   // CLAUDE.md §1 this stays a *hint* — the editor still clicks Publish.
   const ready = drafts.filter((a) => a.proofread_ready_to_publish);
+  // Drafts that have never been scored — targets of the bulk-evaluate run.
+  const unevaluatedDrafts = drafts.filter((a) => a.proofread_at == null);
 
   const visible = React.useMemo(() => {
     let list = all;
@@ -59,12 +100,32 @@ export default function ArticlesListPage() {
             {all.length} articles • {drafts.length} brouillons • {published.length} publiés
           </p>
         </div>
-        <Input
-          placeholder="Rechercher dans le titre ou l'extrait…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="sm:w-72"
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {unevaluatedDrafts.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDialogOpen(true)}
+              disabled={bulkEvaluate.isPending}
+              className="border-violet-300 text-violet-700 hover:bg-violet-50"
+            >
+              {bulkEvaluate.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Évaluer {unevaluatedDrafts.length} brouillon
+              {unevaluatedDrafts.length > 1 ? "s" : ""}
+            </Button>
+          )}
+          <Input
+            placeholder="Rechercher dans le titre ou l'extrait…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="sm:w-72"
+          />
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -106,6 +167,58 @@ export default function ArticlesListPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-violet-600" />
+              Évaluer {unevaluatedDrafts.length} brouillon
+              {unevaluatedDrafts.length > 1 ? "s" : ""} avec le Correcteur IA ?
+            </DialogTitle>
+            <DialogDescription>
+              Le Correcteur IA va scorer chaque brouillon qui n&apos;a pas encore
+              été évalué. Ça prend ~10-20 secondes par lot et coûte environ{" "}
+              <strong>${(unevaluatedDrafts.length * 0.0016).toFixed(3)}</strong> au
+              total (~$0.0016 / article × 2 langues). Les drafts au-dessus du
+              seuil seront automatiquement marqués &laquo; Prêts à publier &raquo;.
+            </DialogDescription>
+          </DialogHeader>
+          {bulkEvaluate.isPending && (
+            <div className="rounded-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Évaluation en cours… Garde l&apos;onglet ouvert.
+              </div>
+              <p className="mt-1.5 text-xs">
+                Le traitement de {unevaluatedDrafts.length} brouillon
+                {unevaluatedDrafts.length > 1 ? "s prend" : " prend"} environ{" "}
+                {Math.max(10, Math.round(unevaluatedDrafts.length * 0.6))}{" "}
+                secondes.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDialogOpen(false)}
+              disabled={bulkEvaluate.isPending}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={() => bulkEvaluate.mutate()}
+              disabled={bulkEvaluate.isPending}
+              className="bg-violet-600 hover:bg-violet-700"
+            >
+              {bulkEvaluate.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Lancer l&apos;évaluation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
