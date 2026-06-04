@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from decimal import Decimal
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -27,6 +28,8 @@ from app.schemas.proofread import (
     ProofreadSuggestion,
     Severity,
 )
+from app.services.ai.ai_logging import persist_ai_log
+from app.services.ai.pricing import compute_cost
 
 logger = get_logger("services.ai.proofreader")
 
@@ -236,12 +239,35 @@ class Proofreader:
                 field=field,
                 error=str(exc),
             )
+            # Record the failed attempt so cost dashboards aren't blind to
+            # outages. duration_ms / tokens are unknown on failure.
+            await persist_ai_log(
+                provider="openai",
+                model=self._model,
+                success=False,
+                cost_usd=Decimal("0"),
+                error=str(exc),
+            )
             raise ExternalServiceError(
                 f"OpenAI proofread failed: {exc.__class__.__name__}",
                 details={"error": str(exc)},
             ) from exc
 
         duration_ms = int((time.perf_counter() - start) * 1000)
+        # Record the successful call — Proofreader bypasses OpenAIClient so it
+        # needs to log directly. Tokens come from the SDK's usage block.
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+        output_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+        await persist_ai_log(
+            provider="openai",
+            model=self._model,
+            success=True,
+            cost_usd=compute_cost(self._model, input_tokens, output_tokens),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            duration_ms=duration_ms,
+        )
         content = response.choices[0].message.content if response.choices else None
         if not content:
             raise AIQualityError("OpenAI returned empty content", details={})

@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal, engine
 from app.core.logging import configure_logging, get_logger
 from app.models.article import Article
+from app.services.ai.ai_logging import LoggingLLMProvider
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.translator import Translator
 
@@ -75,8 +76,9 @@ async def main() -> int:
             return 0
 
         redis_client = aioredis.from_url(str(settings.redis_url))
-        claude = ClaudeClient(settings.anthropic_api_key)
-        translator = Translator(claude=claude, redis_client=redis_client)
+        # Wrap so backfill runs also land in ai_logs for cost attribution.
+        provider = LoggingLLMProvider(ClaudeClient(settings.anthropic_api_key))
+        translator = Translator(provider=provider, redis_client=redis_client)
 
         ok = 0
         failed: list[tuple[int, str]] = []
@@ -89,6 +91,7 @@ async def main() -> int:
                     content_darija=r.content_darija,
                     meta_title=r.meta_title,
                     meta_description=r.meta_description,
+                    raw_article_id=r.raw_article_id,
                 )
             except Exception as exc:
                 print(f"  ✗ id={r.id} failed: {exc.__class__.__name__}: {exc}")
