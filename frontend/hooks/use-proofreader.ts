@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { adminApi } from "@/lib/api-client";
 import type {
@@ -59,6 +60,7 @@ export function useProofreader({
   field,
   enabled = true,
 }: UseProofreaderArgs): UseProofreaderState {
+  const qc = useQueryClient();
   const [result, setResult] = React.useState<ProofreadResult | null>(null);
   const [textAtEval, setTextAtEval] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -90,6 +92,14 @@ export function useProofreader({
         if (aborter.signal.aborted) return;
         setResult(r);
         setTextAtEval(evaluatedText);
+        // Backend persists body scores to the article row (see
+        // POST /admin/articles/{id}/proofread). Invalidate the admin list
+        // cache so the card on /admin/articles reflects the new score
+        // (and "Prêt à publier" badge appears / disappears).
+        if (field === "body") {
+          qc.invalidateQueries({ queryKey: ["articles"] });
+          qc.invalidateQueries({ queryKey: ["article", articleId] });
+        }
       })
       .catch((err: unknown) => {
         if (aborter.signal.aborted) return;
@@ -99,7 +109,7 @@ export function useProofreader({
       .finally(() => {
         if (!aborter.signal.aborted) setLoading(false);
       });
-  }, [enabled, articleId, text, lang, field]);
+  }, [enabled, articleId, text, lang, field, qc]);
 
   const dismissSuggestion = React.useCallback((index: number) => {
     setResult((prev) => {

@@ -501,6 +501,36 @@ async def proofread_article_field(
             field=payload.field,
         )
 
+    # Persist body scores so the admin list cards stay in sync with the
+    # latest evaluator output. Only body scores feed the auto-flag — title
+    # and excerpt are evaluated separately and don't drive ready_to_publish.
+    # The text scored may be unsaved-in-editor; the score reflects the text
+    # the editor JUST proofread, which is the intent ("ready for me to
+    # publish this version"). If the editor discards the changes without
+    # saving, the score on the card will be slightly ahead of the saved
+    # body — acceptable, and self-correcting on the next proofread.
+    persisted_to_card = False
+    if payload.field == "body" and payload.lang in ("darija", "french"):
+        threshold = settings.proofread_publish_ready_threshold
+        if payload.lang == "darija":
+            article.proofread_score_darija = result.score
+        else:
+            article.proofread_score_fr = result.score
+        # Recompute readiness with the existing scores from the other
+        # language (Darija required; FR optional).
+        dr_score = article.proofread_score_darija
+        fr_score = article.proofread_score_fr
+        article.proofread_ready_to_publish = (
+            dr_score is not None
+            and dr_score >= threshold
+            and (fr_score is None or fr_score >= threshold)
+        )
+        article.proofread_at = datetime.now(UTC)
+        article.updated_at = article.proofread_at
+        await session.commit()
+        await session.refresh(article)
+        persisted_to_card = True
+
     logger.info(
         "admin.article.proofread",
         article_id=article_id,
@@ -510,6 +540,7 @@ async def proofread_article_field(
         num_suggestions=len(result.suggestions),
         cached=result.cached,
         text_chars=len(payload.text),
+        persisted_to_card=persisted_to_card,
         admin_email=user.email,
     )
     return result
