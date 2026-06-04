@@ -26,6 +26,7 @@ from app.schemas.article import (
 )
 from app.schemas.auth import AdminUser
 from app.schemas.proofread import ProofreadRequest, ProofreadResult
+from app.services.ai.ai_logging import LoggingLLMProvider
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import Localizer
 from app.services.ai.proofreader import Proofreader
@@ -316,14 +317,16 @@ async def translate_article_to_french(
 
     settings = get_settings()
     async with _redis_for(settings) as redis_client:
-        claude = ClaudeClient(settings.anthropic_api_key)
-        translator = Translator(claude=claude, redis_client=redis_client)
+        # Wrap so the manual "Re-translate" call lands in ai_logs too.
+        provider = LoggingLLMProvider(ClaudeClient(settings.anthropic_api_key))
+        translator = Translator(provider=provider, redis_client=redis_client)
         result = await translator.translate(
             title_darija=article.title_darija,
             excerpt_darija=article.excerpt_darija,
             content_darija=article.content_darija,
             meta_title=article.meta_title,
             meta_description=article.meta_description,
+            raw_article_id=article.raw_article_id,
         )
 
     article.title_fr = result.title_fr or None

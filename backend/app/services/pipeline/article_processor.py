@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from app.models.article import Article
 from app.models.raw_article import RawArticle
 from app.models.source import Source
 from app.schemas.translate import TranslateToFrenchResult
+from app.services.ai.ai_logging import LoggingLLMProvider, persist_ai_log
 from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import LocalizedArticle, Localizer
 from app.services.ai.quality_gate import QualityGate
@@ -84,16 +86,21 @@ class ArticleProcessor:
         skip_image: bool = False,
         skip_translation: bool = False,
     ) -> ArticleProcessor:
-        provider = ClaudeClient(settings.anthropic_api_key)
+        # The provider is wrapped so every Claude call lands in ai_logs.
+        # Localizer + Translator share the same instance — costs roll up by
+        # (provider, model) regardless of which service made the call.
+        provider = LoggingLLMProvider(ClaudeClient(settings.anthropic_api_key))
         localizer = Localizer(
             provider=provider,
             redis_client=redis,
             prompt_version=settings.localizer_prompt_version,
         )
         image_generator = None if skip_image else _build_image_generator(settings)
-        # The same ClaudeClient is reused for the Translator — both share the
-        # Anthropic key + retry policy.
-        translator = None if skip_translation else Translator(claude=provider, redis_client=redis)
+        translator = (
+            None
+            if skip_translation
+            else Translator(provider=provider, redis_client=redis)
+        )
         return cls(
             localizer=localizer,
             quality_gate=QualityGate(),
@@ -171,6 +178,16 @@ class ArticleProcessor:
                     error=str(exc),
                     error_type=exc.__class__.__name__,
                 )
+                # Persist the failed image-gen attempt so cost dashboards see
+                # the attempt even when no bytes came back.
+                await persist_ai_log(
+                    provider="replicate",
+                    model=_image_provider_model(self._image_generator),
+                    success=False,
+                    cost_usd=Decimal("0"),
+                    raw_article_id=raw_article_id,
+                    error=str(exc),
+                )
                 await self._set_status(raw_article_id, STATUS_FAILED, reason=f"image: {exc}")
                 return ProcessOutcome(
                     raw_article_id=raw_article_id,
@@ -179,6 +196,16 @@ class ArticleProcessor:
                     failures=["image_failed"],
                     duration_ms=_elapsed_ms(t0),
                 )
+            # Success path — record the cost. ImageGenerator doesn't go through
+            # the LLM provider abstraction, so we log here directly.
+            await persist_ai_log(
+                provider="replicate",
+                model=_image_provider_model(self._image_generator),
+                success=True,
+                cost_usd=image_outcome.cost_usd,
+                duration_ms=image_outcome.duration_ms,
+                raw_article_id=raw_article_id,
+            )
 
         # Auto-translate Darija → French. Fail-soft: a translation error
         # leaves the FR fields null but never blocks the draft (the admin can
@@ -192,6 +219,7 @@ class ArticleProcessor:
                     content_darija=article.content_darija,
                     meta_title=article.meta_title,
                     meta_description=article.meta_description,
+                    raw_article_id=raw_article_id,
                 )
                 log.info(
                     "article_processor.translated_to_fr",
@@ -325,6 +353,17 @@ class ArticleProcessor:
             await session.commit()
             await session.refresh(row)
             return int(row.id)  # type: ignore[arg-type]
+
+
+def _image_provider_model(generator: ImageGenerator) -> str:
+    """Best-effort extraction of the underlying image model name for ai_logs.
+
+    ImageGenerator owns an ``ImageProvider`` whose concrete implementation
+    (Replicate) carries a ``_model`` attribute. If the shape ever changes we
+    fall back to a safe sentinel rather than crash the persist call.
+    """
+    provider = getattr(generator, "_provider", None)
+    return getattr(provider, "_model", "unknown")
 
 
 def _build_image_generator(settings: Settings) -> ImageGenerator:

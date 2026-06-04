@@ -22,7 +22,7 @@ from redis.asyncio import Redis
 from app.core.exceptions import AIQualityError
 from app.core.logging import get_logger
 from app.schemas.translate import TranslateToFrenchResult
-from app.services.ai.claude_client import ClaudeClient
+from app.services.ai.llm_provider import LLMProvider
 
 logger = get_logger("services.ai.translator")
 
@@ -55,10 +55,14 @@ def _strip_json_fences(text: str) -> str:
 
 
 class Translator:
-    """Darija → French translator with Redis caching."""
+    """Darija → French translator with Redis caching.
 
-    def __init__(self, *, claude: ClaudeClient, redis_client: Redis) -> None:
-        self._claude = claude
+    Accepts any :class:`LLMProvider` (typically a Claude client, optionally
+    wrapped in :class:`LoggingLLMProvider` so the call lands in ``ai_logs``).
+    """
+
+    def __init__(self, *, provider: LLMProvider, redis_client: Redis) -> None:
+        self._provider = provider
         self._redis = redis_client
         self._system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -70,6 +74,7 @@ class Translator:
         content_darija: str,
         meta_title: str | None,
         meta_description: str | None,
+        raw_article_id: int | None = None,
     ) -> TranslateToFrenchResult:
         payload = {
             "title": title_darija,
@@ -78,7 +83,7 @@ class Translator:
             "meta_title": meta_title or "",
             "meta_description": meta_description or "",
         }
-        model = self._claude.default_model
+        model = self._provider.default_model
         key = _cache_key(model, payload)
 
         cached_raw = await self._redis.get(key)
@@ -92,14 +97,20 @@ class Translator:
 
         user_prompt = _build_user_prompt(payload)
         start = time.perf_counter()
-        response = await self._claude.complete(
+        # raw_article_id rides on metadata so LoggingLLMProvider can attribute
+        # the ai_logs row to a specific raw article. The wrapper strips this
+        # key before forwarding to the upstream API.
+        call_metadata: dict[str, str] = {"user_id": "translator"}
+        if raw_article_id is not None:
+            call_metadata["raw_article_id"] = str(raw_article_id)
+        response = await self._provider.complete(
             system=self._system_prompt,
             user=user_prompt,
             # Editorial translation: low temperature for stability.
             temperature=0.4,
             # Bodies can be ~3000 words → ~9000 tokens output; budget headroom.
             max_tokens=8192,
-            metadata={"user_id": "translator"},
+            metadata=call_metadata,
         )
         duration_ms = int((time.perf_counter() - start) * 1000)
 

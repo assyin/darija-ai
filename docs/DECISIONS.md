@@ -104,3 +104,129 @@ RSS scraper
 **Cost estimate**: ~$5/month at 4 articles/day (~$60/year).
 
 **Validation artifacts**: `docs/test-results/2026-05-04-localizer-comparison/`.
+
+---
+
+## ADR-003: Normalize multilingual content into `article_translations`
+
+**Date**: 2026-06-04
+**Status**: ✅ Accepted (design only — execution deferred behind ai_logs fix)
+**Authors**: Yassine (CTO), Claude (advisor)
+**Supersedes**: schema choices implicit in migration `7f3a9c2e1b8d_add_french_columns_to_articles`
+
+### Context
+
+TitritAI launched bilingual (Darija + French) by adding sibling columns to the
+`articles` table: `title_darija/content_darija/...` alongside `title_fr/
+content_fr/...`. Migration `7f3a9c2e1b8d` introduced the FR columns; PR #17
+wired auto-translation into the pipeline.
+
+The roadmap targets **5 locales over 2 years**: ar-MA (Darija), fr, ar (MSA),
+en, es. Continuing the sibling-columns pattern would mean **~25 sparse text
+columns** on a single table by 2028 (5 locales × 5 text fields), with no
+per-locale publication state, no provenance metadata, and a structural
+inability to express common editorial workflows (e.g. "Darija published,
+French in review").
+
+The full 2026-06-04 architectural analysis is in this conversation log and
+referenced from `docs/ai-context/`.
+
+### Decision
+
+Replace the sibling columns with a **normalized `article_translations`
+table**, one row per `(article_id, locale)` pair. The parent `articles` row
+holds only language-agnostic data: slug, hero image, categories, tags, source
+provenance (`raw_article_id`).
+
+```text
+articles                 (language-agnostic spine)
+   └── id, slug, raw_article_id, hero_image_url, hero_image_alt,
+       categories[], tags[], canonical_locale, is_globally_published,
+       created_at, updated_at, deleted_at
+
+article_translations     (per-locale payload, status, provenance)
+   └── id, article_id (FK), locale, title, excerpt, content,
+       meta_title, meta_description, reading_time_minutes, word_count,
+       status ('draft'|'review'|'published'|'archived'),
+       published_at, human_reviewed_at, human_reviewer_id,
+       source_locale, generation_method, ai_provider, ai_model,
+       prompt_version, created_at, updated_at
+       UNIQUE (article_id, locale)
+```
+
+### Rationale
+
+| Outcome | How the new schema delivers |
+|---|---|
+| Add a new locale = INSERT, not migration | New rows in `article_translations`; no DDL touching the hot `articles` table |
+| Per-locale publication state | `article_translations.status` is independent for each row |
+| SEO `hreflang` becomes a SELECT | `SELECT locale FROM article_translations WHERE article_id=X AND status='published'` |
+| Cost attribution per translation | `(ai_provider, ai_model, prompt_version)` columns join cleanly to `ai_logs` |
+| Provenance honesty | `source_locale` records whether this is a direct localization (NULL/'en') or a translation from another locale ('ar-MA') |
+| `/fr/articles` listing | One indexed predicate: `WHERE locale='fr' AND status='published'` |
+| Translator/Localizer can be swapped per locale | `generation_method + prompt_version` describe HOW each row was produced — A/B testing strategies becomes data-level, not code-fork-level |
+
+### Alternatives considered
+
+**A. Status quo (sibling columns)**: Rejected — does not scale to 5 locales,
+forces every new locale into a migration, no per-locale status, no
+provenance.
+
+**B. JSONB `translations` column on `articles`**: Rejected — loses indexing
+on title/content, complicates per-locale queries, makes status enforcement a
+CHECK constraint over JSONB paths (fragile). Postgres JSONB is great for
+schema-less metadata, not for editorial content with strong invariants.
+
+**C. Separate table per locale (`articles_fr`, `articles_ar`…)**: Rejected —
+explodes table count, breaks DRY for indexes/policies/triggers, every new
+locale is still a migration. Worst of both worlds.
+
+**D. Move articles into a CMS (Strapi, Sanity, Directus)**: Out of scope.
+The editorial pipeline is custom for Darija specifics; a generic CMS would
+require re-implementing the AI pipeline glue. Reconsider only if editorial
+team grows past 1 reviewer.
+
+### Consequences
+
+**Positive**:
+- One-time migration cost; permanent scaling capability
+- Smaller `articles` row → better cache hit on hot read paths
+- Each translation owns its lifecycle → editorial flexibility
+- ai_logs becomes joinable to specific translations via `prompt_version`
+- Foundation for the Option B (independent per-locale localization)
+  recommended in the Phase 1+ roadmap, **without** committing to it now
+
+**Negative**:
+- Every read path that touches translated content needs a JOIN
+- Backend services and frontend types both change shape (DTO surface grows)
+- Two-phase expand/contract migration takes calendar time (per CLAUDE.md §6
+  policy: never `DROP COLUMN` directly)
+- 50 existing articles need backfill (trivial at this volume; mandatory)
+
+### Scope boundaries
+
+This ADR is about the **schema**. It does NOT decide:
+- Whether FR remains Darija→FR (Option A) or moves to EN→FR (Option B) — that
+  becomes a per-locale config in the new schema
+- When other locales (ar, en, es) ship — separate product decisions
+- Admin UI shape — driven by the schema but designed separately
+
+### Pre-conditions
+
+1. **`ai_logs` cost tracking must be fixed first** (RCA 2026-06-04). Without
+   per-call cost data, decisions made after the migration are blind. The
+   migration plan explicitly depends on this.
+2. Backend test coverage on `Article` model paths >= 80% (CLAUDE.md §8) —
+   current state should be re-measured before migration starts.
+3. Schema migration plan (`docs/migrations/2026-06-04-article-translations.md`)
+   accepted by Yassine.
+
+### Verification (post-migration)
+
+- All 50 existing articles render identically at `/articles/<slug>` and
+  `/fr/articles/<slug>` (HTML diff before/after expected to be a no-op
+  for content; minor DOM changes around metadata acceptable)
+- `pg_stat_statements` shows no new slow queries above the p95 baseline
+- ai_logs join to `article_translations` resolves cleanly:
+  `SELECT t.locale, SUM(l.cost_usd) FROM ai_logs l JOIN article_translations t USING (prompt_version) GROUP BY 1` returns sane numbers
+- Per-locale publish workflow is exercised once end-to-end in admin UI
