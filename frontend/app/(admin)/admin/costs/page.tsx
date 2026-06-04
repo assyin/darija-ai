@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Link } from "@/i18n/navigation";
 import { adminApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
