@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from app.api.deps import public_rate_limit
+from app.api.v1.ai_logs import router as ai_logs_admin_router
 from app.api.v1.articles import admin_router as articles_admin_router
 from app.api.v1.articles import public_router as articles_public_router
 from app.api.v1.auth import router as auth_router
@@ -151,6 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router, prefix="/api/v1", dependencies=[Depends(public_rate_limit)])
     app.include_router(settings_admin_router, prefix="/api/v1")
     app.include_router(articles_admin_router, prefix="/api/v1")
+    app.include_router(ai_logs_admin_router, prefix="/api/v1")
     app.include_router(
         articles_public_router,
         prefix="/api/v1",

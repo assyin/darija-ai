@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { FileText, LogOut, Rss, Settings } from "lucide-react";
+import { DollarSign, FileText, LogOut, Rss, Settings } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin/articles", label: "Articles", icon: FileText },
   { href: "/admin/sources", label: "Sources", icon: Rss },
+  { href: "/admin/costs", label: "Coûts IA", icon: DollarSign },
   { href: "/admin/settings", label: "Paramètres", icon: Settings },
 ] as const;
 
