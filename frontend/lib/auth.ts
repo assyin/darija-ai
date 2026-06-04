@@ -14,9 +14,15 @@ interface BackendToken {
   expires_in: number;
 }
 
+// 8 h. Must match `admin_jwt_expiry_seconds` in `backend/app/core/config.py`
+// so the NextAuth session never outlives the backend JWT it carries — that's
+// what caused the "0 articles after inactivity" bug: NextAuth thought the
+// user was still logged in while the backend JWT had silently expired.
+const ADMIN_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
+
 export const authConfig: NextAuthConfig = {
   pages: { signIn: "/login" },
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: ADMIN_SESSION_MAX_AGE_SECONDS },
   providers: [
     Credentials({
       id: "credentials",
