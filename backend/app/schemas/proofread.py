@@ -36,9 +36,20 @@ class ProofreadSuggestion(BaseModel):
 
 
 class ProofreadResult(BaseModel):
-    """Response of POST /admin/articles/{id}/proofread."""
+    """Response of POST /admin/articles/{id}/proofread.
+
+    From prompt v2 onwards the model returns four independent sub-scores and
+    the top-level ``score`` is computed server-side as ``min(...)`` of the
+    four — the worst dimension dominates, no anchoring to a "publishable"
+    threshold. Older cached v1 results have the sub-scores set to ``None``
+    and ``score`` carries the legacy single score.
+    """
 
     score: int = Field(..., ge=0, le=100)
+    grammar_score: int | None = Field(default=None, ge=0, le=100)
+    naturalness_score: int | None = Field(default=None, ge=0, le=100)
+    clarity_score: int | None = Field(default=None, ge=0, le=100)
+    consistency_score: int | None = Field(default=None, ge=0, le=100)
     summary: str = Field(..., max_length=400)
     suggestions: list[ProofreadSuggestion] = Field(default_factory=list, max_length=12)
     lang: Language

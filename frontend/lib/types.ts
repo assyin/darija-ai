@@ -136,6 +136,12 @@ export interface ProofreadSuggestion {
 
 export interface ProofreadResult {
   score: number;
+  /** Prompt v2+: per-dimension sub-scores. Server returns null when the
+   *  cached entry was produced by v1 or the model dropped them. */
+  grammar_score: number | null;
+  naturalness_score: number | null;
+  clarity_score: number | null;
+  consistency_score: number | null;
   summary: string;
   suggestions: ProofreadSuggestion[];
   lang: ProofreadLang;

@@ -51,6 +51,42 @@ function scoreColor(score: number): string {
   return "text-rose-700 bg-rose-50 ring-rose-200";
 }
 
+/** Small per-dimension chip used in the score breakdown. */
+function SubScorePill({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | null;
+}) {
+  if (value == null) {
+    return (
+      <div className="rounded-md border border-dashed border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-muted-foreground)]">
+        <span className="font-medium uppercase tracking-wide">{label}</span>
+        <span className="ml-1">—</span>
+      </div>
+    );
+  }
+  const tone =
+    value >= 80
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : value >= 60
+        ? "border-orange-200 bg-orange-50 text-orange-900"
+        : "border-rose-200 bg-rose-50 text-rose-800";
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between rounded-md border px-2 py-1 text-[10px] font-medium",
+        tone,
+      )}
+      title={`Score ${label.toLowerCase()} — ${value}/100`}
+    >
+      <span className="uppercase tracking-wide">{label}</span>
+      <span className="ml-1 tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 export function ProofreaderPanel({
   result,
   loading,
@@ -144,8 +180,25 @@ export function ProofreaderPanel({
               <span className="text-3xl font-bold tabular-nums">
                 {result.score}
               </span>
-              <span className="text-xs font-medium opacity-70">/ 100</span>
+              <span className="text-xs font-medium opacity-70">/ 100 (min)</span>
             </div>
+            {/* Per-dimension breakdown — surfaces WHY the overall score is what
+                 it is. The overall = min of the four, so the lowest pill is
+                 the bottleneck the editor should fix first. */}
+            {(result.grammar_score != null ||
+              result.naturalness_score != null ||
+              result.clarity_score != null ||
+              result.consistency_score != null) && (
+              <div className="mb-3 grid grid-cols-2 gap-1.5">
+                <SubScorePill label="Grammaire" value={result.grammar_score} />
+                <SubScorePill label="Naturel" value={result.naturalness_score} />
+                <SubScorePill label="Clarté" value={result.clarity_score} />
+                <SubScorePill
+                  label="Cohérence"
+                  value={result.consistency_score}
+                />
+              </div>
+            )}
             {result.summary && (
               <p className="mb-3 text-xs leading-relaxed text-[var(--color-muted-foreground)]">
                 {result.summary}
