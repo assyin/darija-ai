@@ -1,7 +1,8 @@
 import Image from "next/image";
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+
+import { Link } from "@/i18n/navigation";
 
 /**
  * Branded 404 — full-bleed cinematic asset (lost astronaut + Moroccan cosmic
