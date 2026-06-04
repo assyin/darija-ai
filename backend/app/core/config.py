@@ -52,7 +52,10 @@ class Settings(BaseSettings):
     admin_password: SecretStr = Field(default="changeme-in-prod", min_length=8)
     admin_jwt_secret: str = Field(default="dev-only-change-me", min_length=10)
     admin_jwt_algorithm: str = "HS256"
-    admin_jwt_expiry_seconds: int = 3600
+    # 8 h is a balance between editorial-workflow comfort (long enough that
+    # a single editing session never gets kicked out) and security. Match the
+    # NextAuth session.maxAge in `frontend/lib/auth.ts` if you change this.
+    admin_jwt_expiry_seconds: int = 28800
     auth_login_rate_limit_max_requests: int = 5
     auth_login_rate_limit_window_seconds: int = 600
     public_rate_limit_max_requests: int = 60

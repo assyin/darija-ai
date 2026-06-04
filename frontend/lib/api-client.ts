@@ -42,6 +42,23 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    // Admin session expired (proxy stamped the 401 with this code) → boot the
+    // user to the login screen with a callbackUrl so they land back on the
+    // page they came from. Without this, react-query would just swallow the
+    // 401 and the UI shows "0 items".
+    const code = (parsed as { error?: { code?: string } } | null)?.error?.code;
+    if (
+      base === ADMIN_BASE &&
+      res.status === 401 &&
+      code === "SESSION_EXPIRED" &&
+      typeof window !== "undefined"
+    ) {
+      const here = encodeURIComponent(window.location.pathname + window.location.search);
+      // Hard navigate — react-query callers (mutations, etc.) shouldn't see the
+      // promise resolve in this case.
+      window.location.assign(`/login?callbackUrl=${here}`);
+    }
+
     const message =
       (parsed as { error?: { message?: string } } | null)?.error?.message ||
       `${res.status} ${res.statusText}`;

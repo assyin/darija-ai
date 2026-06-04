@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+// Accept callbackUrl when redirected here by an expired session, so the user
+// lands back on the page they were on (e.g. /admin/articles/16). Restrict to
+// internal admin paths — never honor an attacker-supplied external URL.
+function sanitizeCallbackUrl(value: string | null): string {
+  if (!value) return "/admin/articles";
+  if (!value.startsWith("/admin")) return "/admin/articles";
+  return value;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const search = useSearchParams();
+  const callbackUrl = sanitizeCallbackUrl(search.get("callbackUrl"));
+  const isExpired = search.get("expired") === "1";
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +43,7 @@ export default function LoginPage() {
       setSubmitting(false);
       return;
     }
-    router.push("/admin/articles");
+    router.push(callbackUrl);
     router.refresh();
   }
 
@@ -48,6 +60,15 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {(isExpired || callbackUrl !== "/admin/articles") && (
+            <p
+              role="status"
+              className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            >
+              Votre session a expiré pour des raisons de sécurité. Reconnectez-vous
+              pour continuer.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
