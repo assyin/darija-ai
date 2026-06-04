@@ -54,6 +54,12 @@ export interface ArticleAdmin {
   /** French summary fields — null until the admin authors them. */
   title_fr: string | null;
   excerpt_fr: string | null;
+  /** Auto-flag mode (CLAUDE.md §1 unchanged: hints only, never auto-publish).
+   *  Populated by the pipeline after the Proofreader runs on the body. */
+  proofread_score_darija: number | null;
+  proofread_score_fr: number | null;
+  proofread_at: string | null;
+  proofread_ready_to_publish: boolean;
 }
 
 export interface ArticleAdminDetail extends ArticleAdmin {

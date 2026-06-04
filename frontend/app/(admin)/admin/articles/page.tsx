@@ -11,7 +11,7 @@ import { adminApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ArticleAdmin } from "@/lib/types";
 
-type Filter = "all" | "drafts" | "published";
+type Filter = "all" | "drafts" | "ready" | "published";
 
 export default function ArticlesListPage() {
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -30,10 +30,14 @@ export default function ArticlesListPage() {
   const all = data ?? [];
   const drafts = all.filter((a) => !a.is_published);
   const published = all.filter((a) => a.is_published);
+  // "Ready to publish" = drafts that the AI Proofreader greenlighted. Per
+  // CLAUDE.md §1 this stays a *hint* — the editor still clicks Publish.
+  const ready = drafts.filter((a) => a.proofread_ready_to_publish);
 
   const visible = React.useMemo(() => {
     let list = all;
     if (filter === "drafts") list = drafts;
+    if (filter === "ready") list = ready;
     if (filter === "published") list = published;
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -44,7 +48,7 @@ export default function ArticlesListPage() {
       );
     }
     return list;
-  }, [all, drafts, published, filter, query]);
+  }, [all, drafts, ready, published, filter, query]);
 
   return (
     <div className="space-y-6">
@@ -69,6 +73,15 @@ export default function ArticlesListPage() {
         </FilterButton>
         <FilterButton active={filter === "drafts"} onClick={() => setFilter("drafts")}>
           Brouillons <Badge variant="muted" className="ml-2">{drafts.length}</Badge>
+        </FilterButton>
+        <FilterButton active={filter === "ready"} onClick={() => setFilter("ready")}>
+          Prêts à publier{" "}
+          <Badge
+            variant={ready.length > 0 ? "success" : "muted"}
+            className="ml-2"
+          >
+            {ready.length}
+          </Badge>
         </FilterButton>
         <FilterButton active={filter === "published"} onClick={() => setFilter("published")}>
           Publiés <Badge variant="muted" className="ml-2">{published.length}</Badge>

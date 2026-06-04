@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     ai_monthly_cap_usd: float = 50.0
     ai_spend_daily_threshold_usd: float = 5.0
 
+    # Auto-flag mode for the editorial AI proofreader. When the pipeline runs
+    # the Proofreader on a new draft, an article is flagged "ready to publish"
+    # if the body score for every populated language is at or above this
+    # threshold. The flag is a hint surfaced as a green badge in the admin
+    # list — it never auto-publishes (CLAUDE.md §1 unchanged).
+    proofread_publish_ready_threshold: int = 85
+
     @property
     def is_dev(self) -> bool:
         return self.environment == "dev"

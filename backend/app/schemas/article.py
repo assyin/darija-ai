@@ -30,6 +30,12 @@ class ArticleAdmin(BaseModel):
     # already have a FR translation.
     title_fr: str | None = None
     excerpt_fr: str | None = None
+    # Auto-flag mode (CLAUDE.md §1 unchanged: hints only, never auto-publish).
+    # Populated by the pipeline after the Proofreader runs on the body.
+    proofread_score_darija: int | None = None
+    proofread_score_fr: int | None = None
+    proofread_at: datetime | None = None
+    proofread_ready_to_publish: bool = False
 
 
 class ArticleAdminDetail(ArticleAdmin):
