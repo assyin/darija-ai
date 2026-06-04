@@ -193,33 +193,42 @@ export function ArticleCard({ article }: ArticleCardProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {lowConfidencePublish && (
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
               )}
-              Publier &laquo;{" "}
-              <span className="truncate font-arabic" dir="rtl">
-                {titleClean}
-              </span>{" "}
-              &raquo; ?
+              <span>Publier cet article&nbsp;?</span>
             </DialogTitle>
-            <DialogDescription>
-              {lowConfidencePublish ? (
-                <>
-                  Le Correcteur IA n&apos;a <strong>pas</strong> marqué ce brouillon
-                  comme prêt — score Darija{" "}
-                  <strong>{article.proofread_score_darija ?? "non évalué"}</strong>
-                  {article.proofread_score_fr != null && (
-                    <>
-                      , score Français <strong>{article.proofread_score_fr}</strong>
-                    </>
-                  )}
-                  . Tu peux quand même publier, mais relis-le d&apos;abord.
-                </>
-              ) : (
-                <>
-                  Il sera visible publiquement immédiatement. Tu peux le dépublier
-                  à tout moment depuis la page de l&apos;article.
-                </>
-              )}
+            <DialogDescription className="space-y-3">
+              {/* Title preview — its own block so long RTL titles wrap nicely
+                   and the heading row stays predictable. */}
+              <span
+                dir="rtl"
+                className="block rounded-md border border-[var(--color-border)] bg-slate-50 px-3 py-2 font-arabic text-base font-semibold leading-snug text-slate-900"
+              >
+                {titleClean}
+              </span>
+              <span className="block">
+                {lowConfidencePublish ? (
+                  <>
+                    Le Correcteur IA n&apos;a <strong>pas</strong> marqué ce
+                    brouillon comme prêt — score Darija{" "}
+                    <strong>
+                      {article.proofread_score_darija ?? "non évalué"}
+                    </strong>
+                    {article.proofread_score_fr != null && (
+                      <>
+                        , score Français{" "}
+                        <strong>{article.proofread_score_fr}</strong>
+                      </>
+                    )}
+                    . Tu peux quand même publier, mais relis-le d&apos;abord.
+                  </>
+                ) : (
+                  <>
+                    Il sera visible publiquement immédiatement. Tu peux le
+                    dépublier à tout moment depuis la page de l&apos;article.
+                  </>
+                )}
+              </span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
