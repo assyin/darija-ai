@@ -104,8 +104,7 @@ class BulkProofreadResult(BaseModel):
     failed: int = Field(description="Articles where every Proofreader call errored.")
     ready_after: int = Field(
         description=(
-            "Articles flagged 'ready to publish' after this run "
-            "(cumulative across all drafts)."
+            "Articles flagged 'ready to publish' after this run (cumulative across all drafts)."
         ),
     )
     duration_seconds: float = Field(description="Server-side wall-clock time, for UI sizing.")
