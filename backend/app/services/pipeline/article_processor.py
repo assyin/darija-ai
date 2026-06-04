@@ -96,11 +96,7 @@ class ArticleProcessor:
             prompt_version=settings.localizer_prompt_version,
         )
         image_generator = None if skip_image else _build_image_generator(settings)
-        translator = (
-            None
-            if skip_translation
-            else Translator(provider=provider, redis_client=redis)
-        )
+        translator = None if skip_translation else Translator(provider=provider, redis_client=redis)
         return cls(
             localizer=localizer,
             quality_gate=QualityGate(),
