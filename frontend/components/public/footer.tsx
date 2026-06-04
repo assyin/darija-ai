@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { Brand } from "@/components/public/brand";
+import { Link } from "@/i18n/navigation";
 import { LogoMark } from "@/components/public/logo-mark";
 import { NewsletterSignup } from "@/components/public/newsletter-signup";
 import {

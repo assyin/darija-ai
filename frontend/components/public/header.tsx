@@ -1,25 +1,19 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { Brand } from "@/components/public/brand";
 import { LogoMark } from "@/components/public/logo-mark";
 import { Button } from "@/components/ui/button";
-import { NAV_LINKS, stripLocale } from "@/lib/nav";
+import { Link, usePathname } from "@/i18n/navigation";
+import { NAV_LINKS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import type { SiteSettings } from "@/lib/use-site-settings";
 
 interface HeaderProps {
   settings: SiteSettings;
-}
-
-// Default locale carries no URL prefix (per `i18n/routing.ts`).
-function localePrefix(locale: string): string {
-  return locale === "ar-MA" ? "" : `/${locale}`;
 }
 
 const LOCALE_SWITCHER: { id: "ar-MA" | "fr"; label: string }[] = [
@@ -30,8 +24,9 @@ const LOCALE_SWITCHER: { id: "ar-MA" | "fr"; label: string }[] = [
 export function Header({ settings }: HeaderProps) {
   const t = useTranslations("nav");
   const tHome = useTranslations("home");
-  const pathname = usePathname();
-  const current = stripLocale(pathname ?? "/");
+  // `usePathname` from `@/i18n/navigation` returns the locale-stripped path,
+  // so `current === "/"` works directly without a `stripLocale()` helper.
+  const current = usePathname() || "/";
   const locale = useLocale();
   const [open, setOpen] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
@@ -49,13 +44,9 @@ export function Header({ settings }: HeaderProps) {
       ? current === "/"
       : current === href || current.startsWith(`${href}/`);
 
-  // Build a path in another locale preserving the current page.
-  const pathFor = (target: string) =>
-    `${localePrefix(target)}${current === "/" ? "" : current}` || "/";
-
-  // The primary CTA scrolls to the home page's newsletter banner,
-  // staying in the active locale.
-  const ctaHref = `${localePrefix(locale)}/#cta-banner`;
+  // The primary CTA scrolls to the home page's newsletter banner; the
+  // locale-aware Link below auto-prefixes it (e.g. `/fr/#cta-banner`).
+  const ctaHref = "/#cta-banner";
 
   return (
     <header
@@ -69,7 +60,7 @@ export function Header({ settings }: HeaderProps) {
       <div className="container-wide flex h-16 items-center justify-between gap-4 lg:h-[72px]">
         {/* Logo — mark + wordmark */}
         <Link
-          href={`${localePrefix(locale)}/` || "/"}
+          href="/"
           className="group inline-flex items-center gap-2.5 shrink-0"
         >
           <LogoMark size={36} priority />
@@ -114,7 +105,8 @@ export function Header({ settings }: HeaderProps) {
               return (
                 <Link
                   key={opt.id}
-                  href={pathFor(opt.id)}
+                  href={current}
+                  locale={opt.id}
                   className={cn(
                     "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition",
                     isCur
@@ -154,7 +146,7 @@ export function Header({ settings }: HeaderProps) {
 
           <div className="container-wide flex h-16 items-center justify-between">
             <Link
-              href={`${localePrefix(locale)}/` || "/"}
+              href="/"
               className="inline-flex items-center gap-2.5"
               onClick={() => setOpen(false)}
             >
@@ -200,7 +192,8 @@ export function Header({ settings }: HeaderProps) {
                 return (
                   <Link
                     key={opt.id}
-                    href={pathFor(opt.id)}
+                    href={current}
+                    locale={opt.id}
                     onClick={() => setOpen(false)}
                     className={cn(
                       "rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition",

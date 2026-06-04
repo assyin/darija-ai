@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { Link } from "@/i18n/navigation";
 import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { CtaBanner } from "@/components/public/home/cta-banner";
 import { Hero } from "@/components/public/home/hero";

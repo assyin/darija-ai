@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   ArrowLeft,
   Bot,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { Link } from "@/i18n/navigation";
 import { cleanPhone, getSiteSettings } from "@/lib/use-site-settings";
 import { cn } from "@/lib/utils";
 
