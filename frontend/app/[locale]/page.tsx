@@ -14,9 +14,10 @@ import { getSiteSettings } from "@/lib/use-site-settings";
 const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 // Map our routing locales to OG locale codes (BCP 47 ↔ Facebook style).
+// `ar` (MSA) was dropped from routing.locales (see i18n/routing.ts), so the
+// only mapped values are fr and the ar-MA default.
 function ogLocale(locale: string): string {
   if (locale === "fr") return "fr_FR";
-  if (locale === "ar") return "ar_AR";
   return "ar_MA";
 }
 

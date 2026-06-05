@@ -7,9 +7,9 @@ import { publicApi } from "@/lib/api-client";
 import { localizedCanonical } from "@/lib/canonical";
 import { getSiteSettings } from "@/lib/use-site-settings";
 
+// `ar` (MSA) was dropped from routing.locales (see i18n/routing.ts).
 function ogLocale(locale: string): string {
   if (locale === "fr") return "fr_FR";
-  if (locale === "ar") return "ar_AR";
   return "ar_MA";
 }
 
