@@ -72,8 +72,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   replicate: "Replicate (Images)",
 };
 
-const SOURCE_PROD = "https://titrit.135-181-149-237.sslip.io";
-
 // --- Page --------------------------------------------------------------------
 
 export default function CostsPage() {
@@ -292,8 +290,7 @@ export default function CostsPage() {
         >
           articles
         </Link>{" "}
-        pour le détail éditorial.{" "}
-        <span className="text-[10px]">(Origine : {SOURCE_PROD})</span>
+        pour le détail éditorial.
       </p>
     </div>
   );
