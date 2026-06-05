@@ -1,20 +1,48 @@
 # Co-hosted Caddy — serves Titrit on :443 only (TLS-ALPN-01 cert), leaving the
 # host's existing Caddy in charge of :80 for the other project.
+#
+# Domain migration (sslip.io → titritai.com):
+#   Phase A (this file) — DUAL SERVE
+#     Both `${DOMAIN}` (env var, target: titritai.com) and the legacy sslip.io
+#     host serve the full app. Lets us validate the new domain end-to-end
+#     without cutting users off the old one.
+#   Phase B (follow-up commit, J0+1h) — 301
+#     Replace the sslip.io `handle ... reverse_proxy` block with
+#       `redir https://{$DOMAIN}{uri} permanent`
+#     to push every old-domain hit to the new canonical.
+#   Phase C (J+90) — remove sslip.io block entirely once GSC/Bing have
+#     migrated and incoming-link traffic is negligible.
+
 {
-	# We don't own :80 here, so don't try to serve HTTP→HTTPS redirects on it.
-	auto_https disable_redirects
+    # We don't own :80 here, so don't try to serve HTTP→HTTPS redirects on it.
+    auto_https disable_redirects
 }
 
-{$DOMAIN} {
-	encode zstd gzip
+# --- Primary domain (driven by env DOMAIN) ----------------------------------
+# www.<DOMAIN> is folded to the apex via a permanent redirect — search engines
+# don't see two hostnames for the same content.
+{$DOMAIN}, www.{$DOMAIN} {
+    encode zstd gzip
 
-	# Backend API (FastAPI) — only the /api/v1 prefix.
-	handle /api/v1/* {
-		reverse_proxy backend:8000
-	}
+    @www host www.{$DOMAIN}
+    redir @www https://{$DOMAIN}{uri} permanent
 
-	# Everything else — Next.js (pages + its own /api/* route handlers).
-	handle {
-		reverse_proxy frontend:3000
-	}
+    handle /api/v1/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+
+# --- Legacy sslip.io (Phase A: dual-serve, Phase B: 301, Phase C: removed) --
+titrit.135-181-149-237.sslip.io {
+    encode zstd gzip
+
+    handle /api/v1/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
 }
