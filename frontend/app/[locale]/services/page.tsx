@@ -12,10 +12,9 @@ import {
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { Link } from "@/i18n/navigation";
+import { localizedCanonical } from "@/lib/canonical";
 import { cleanPhone, getSiteSettings } from "@/lib/use-site-settings";
 import { cn } from "@/lib/utils";
-
-const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 function stripLeadingEmoji(s: string): string {
   return s.replace(/^[\p{Extended_Pictographic}‍]+\s*/u, "");
@@ -31,7 +30,7 @@ export async function generateMetadata({
   return {
     title: t("page_title"),
     description: t("page_subtitle"),
-    alternates: { canonical: `${SITE_BASE}/services` },
+    alternates: { canonical: localizedCanonical(locale, "/services") },
   };
 }
 

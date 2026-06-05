@@ -3,9 +3,8 @@ import { Quote, Sparkles } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { LogoMark } from "@/components/public/logo-mark";
+import { localizedCanonical } from "@/lib/canonical";
 import { getSiteSettings } from "@/lib/use-site-settings";
-
-const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export async function generateMetadata({
   params,
@@ -17,7 +16,7 @@ export async function generateMetadata({
   return {
     title: t("page_title"),
     description: t("intro"),
-    alternates: { canonical: `${SITE_BASE}/about` },
+    alternates: { canonical: localizedCanonical(locale, "/about") },
   };
 }
 

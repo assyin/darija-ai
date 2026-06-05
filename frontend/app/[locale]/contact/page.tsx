@@ -3,9 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { ContactDirect } from "@/components/public/contact-direct";
 import { ContactForm } from "@/components/public/contact-form";
+import { localizedCanonical } from "@/lib/canonical";
 import { getSiteSettings } from "@/lib/use-site-settings";
-
-const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export async function generateMetadata({
   params,
@@ -17,7 +16,7 @@ export async function generateMetadata({
   return {
     title: t("page_title"),
     description: t("page_subtitle"),
-    alternates: { canonical: `${SITE_BASE}/contact` },
+    alternates: { canonical: localizedCanonical(locale, "/contact") },
   };
 }
 

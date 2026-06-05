@@ -8,11 +8,24 @@ import { Hero } from "@/components/public/home/hero";
 import { ServicesPreview } from "@/components/public/home/services-preview";
 import { StatStrip } from "@/components/public/home/stat-strip";
 import { publicApi } from "@/lib/api-client";
+import { localizedCanonical } from "@/lib/canonical";
 import { getSiteSettings } from "@/lib/use-site-settings";
 
 const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-export async function generateMetadata(): Promise<Metadata> {
+// Map our routing locales to OG locale codes (BCP 47 ↔ Facebook style).
+function ogLocale(locale: string): string {
+  if (locale === "fr") return "fr_FR";
+  if (locale === "ar") return "ar_AR";
+  return "ar_MA";
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const s = await getSiteSettings();
   const title = s.seo_default_title || s.business_name || "DarijaAI";
   const description = s.seo_default_description || "";
@@ -20,16 +33,17 @@ export async function generateMetadata(): Promise<Metadata> {
   // so social previews are never imageless.
   const ogImage = s.business_logo_url || `${SITE_BASE}/logo-mark.png`;
   const ogImageIsBrandMark = !s.business_logo_url;
+  const url = localizedCanonical(locale, "/");
   return {
     title,
     description,
-    alternates: { canonical: SITE_BASE },
+    alternates: { canonical: url },
     openGraph: {
       type: "website",
-      locale: "ar_MA",
+      locale: ogLocale(locale),
       title,
       description,
-      url: SITE_BASE,
+      url,
       images: [
         ogImageIsBrandMark
           ? { url: ogImage, width: 1024, height: 1024 }

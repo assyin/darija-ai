@@ -4,19 +4,29 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
 import { publicApi } from "@/lib/api-client";
+import { localizedCanonical } from "@/lib/canonical";
 import { getSiteSettings } from "@/lib/use-site-settings";
 
-const SITE_BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+function ogLocale(locale: string): string {
+  if (locale === "fr") return "fr_FR";
+  if (locale === "ar") return "ar_AR";
+  return "ar_MA";
+}
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const [s, t] = await Promise.all([
     getSiteSettings(),
-    getTranslations("articles_list"),
+    getTranslations({ locale, namespace: "articles_list" }),
   ]);
   const siteName = s.business_name || "DarijaAI";
   const title = `${t("page_title")} | ${siteName}`;
   const description = s.seo_default_description || t("page_subtitle");
-  const url = `${SITE_BASE}/articles`;
+  const url = localizedCanonical(locale, "/articles");
   const ogImage = s.business_logo_url;
   return {
     title,
@@ -24,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: { canonical: url },
     openGraph: {
       type: "website",
-      locale: "ar_MA",
+      locale: ogLocale(locale),
       title,
       description,
       url,

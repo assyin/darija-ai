@@ -66,6 +66,9 @@ class ArticlePublic(BaseModel):
     word_count: int | None
     reading_time_minutes: int | None
     published_at: datetime | None
+    # Exposed for sitemap.xml `<lastmod>` — reflects post-publication edits
+    # the editor made via the admin (re-translate, image regen, etc.).
+    updated_at: datetime | None = None
     # French variants (nullable). Frontend chooses based on locale, with darija
     # fallback if a FR variant hasn't been authored yet.
     title_fr: str | None = None
