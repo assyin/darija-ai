@@ -56,7 +56,11 @@ async def list_public_articles(
         description="When 'fr', restrict to articles that have a French "
         "translation (title_fr is non-empty). Default returns everything.",
     ),
-    limit: int = Query(default=20, ge=1, le=100),
+    # Cap raised from 100 → 500 so the public sitemap can fetch the full
+    # published catalogue in one round-trip (Google sitemap convention is one
+    # URL per row, no pagination). Editorial volume is ~50; 500 leaves a
+    # comfortable runway before we need to switch to a paginated index.
+    limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
 ) -> list[Article]:

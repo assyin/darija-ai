@@ -102,6 +102,8 @@ export interface ArticlePublic {
   word_count: number | null;
   reading_time_minutes: number | null;
   published_at: string | null;
+  /** Exposed so sitemap.xml can emit accurate <lastmod>. */
+  updated_at: string | null;
   title_fr: string | null;
   excerpt_fr: string | null;
 }

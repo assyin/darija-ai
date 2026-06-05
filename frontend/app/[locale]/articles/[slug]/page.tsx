@@ -11,6 +11,7 @@ import { RtlContent } from "@/components/shared/rtl-content";
 import { publicApi } from "@/lib/api-client";
 import { localizeArticle } from "@/lib/article-localize";
 import { bdiHtml, stripBdi } from "@/lib/bidi";
+import { localizedCanonical } from "@/lib/canonical";
 import type { ArticlePublic } from "@/lib/types";
 import { getSiteSettings } from "@/lib/use-site-settings";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,10 @@ export async function generateMetadata({
   const article = await publicApi.getArticle(slug);
   if (!article) return { title: "Article" };
 
-  const url = `${SITE_BASE}/articles/${article.slug}`;
+  // Each locale points to its own canonical (and to its own siblings via
+  // hreflang in the sitemap). Before this fix all locales reported the
+  // ar-MA URL as canonical, suppressing FR/AR pages from the Google index.
+  const url = localizedCanonical(locale, `/articles/${article.slug}`);
   const localized = localizeArticle(article, locale);
   // Strip bdi tags — metadata is plain-text, not HTML.
   const title = stripBdi(localized.metaTitle || localized.title);
@@ -81,7 +85,9 @@ export default async function ArticlePage({
     .getArticles(6, locale === "fr" ? "fr" : undefined)
     .then((list) => list.filter((a) => a.slug !== slug).slice(0, 3))
     .catch(() => [] as ArticlePublic[]);
-  const url = `${SITE_BASE}/articles/${article.slug}`;
+  // Same locale-aware URL as in generateMetadata so JSON-LD mainEntityOfPage
+  // agrees with the canonical and og:url.
+  const url = localizedCanonical(locale, `/articles/${article.slug}`);
   const businessName = settings.business_name || "DarijaAI";
   const localized = localizeArticle(article, locale);
 
