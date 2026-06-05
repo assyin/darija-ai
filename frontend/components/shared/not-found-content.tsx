@@ -1,8 +1,16 @@
 import Image from "next/image";
+import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Link } from "@/i18n/navigation";
+// NOTE: we use plain next/link (NOT @/i18n/navigation Link) here. The i18n
+// Link reads the locale from a runtime store that is not consistently
+// available when the global app/not-found.tsx boundary fires (unmatched
+// top-level paths bypass the [locale] segment, so no locale was registered).
+// Crashing in here made unmatched paths return status 500 instead of 404,
+// which Google Search Console counts as a server error. The "/" target is
+// locale-agnostic — the next-intl middleware redirects the user onto the
+// correct locale based on their cookie / Accept-Language.
 
 /**
  * Branded 404 — full-bleed cinematic asset (lost astronaut + Moroccan cosmic
