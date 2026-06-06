@@ -6,7 +6,6 @@ import { ArrowLeft, Clock, ImageIcon } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 
 import { ArticleCardPublic } from "@/components/public/article-card-public";
-import { ArticleCTA } from "@/components/public/article-cta";
 import { RtlContent } from "@/components/shared/rtl-content";
 import { publicApi } from "@/lib/api-client";
 import { localizeArticle } from "@/lib/article-localize";
@@ -232,11 +231,6 @@ export default async function ArticlePage({
             markdown={localized.content ?? article.content_darija}
             dir={localized.dir}
           />
-        </div>
-
-        {/* Editorial CTA — driven by site_settings.cta_template_darija */}
-        <div className="container-narrow">
-          <ArticleCTA settings={settings} />
         </div>
 
         {/* Related — light cards inside the light page */}
