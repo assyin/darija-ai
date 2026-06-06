@@ -113,4 +113,25 @@ export const publicApi = {
         if (e instanceof ApiError && e.status === 404) return null;
         throw e;
       }),
+
+  /**
+   * Semantic related-articles rail. Backend ranks by weighted overlap of
+   * categories (x4) + tags (x2) + recency (+1 if <30 days). Falls back
+   * to the most recent publications when no topical neighbours exist.
+   * @param slug   The source article's slug.
+   * @param lang   Pass "fr" so we only get articles that have a FR translation.
+   * @param limit  1-5, default 4 — matches the 2x2 grid in the page.
+   */
+  getRelatedArticles: (
+    slug: string,
+    lang?: "fr",
+    limit: number = 4,
+  ): Promise<ArticlePublic[]> => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (lang) params.set("lang", lang);
+    return api.get<ArticlePublic[]>(
+      `/articles/${encodeURIComponent(slug)}/related?${params}`,
+      REVALIDATE_ARTICLES,
+    );
+  },
 };
