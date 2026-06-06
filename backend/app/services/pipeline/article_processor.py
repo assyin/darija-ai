@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from app.models.source import Source
 from app.schemas.translate import TranslateToFrenchResult
 from app.services.ai.ai_logging import LoggingLLMProvider, persist_ai_log
 from app.services.ai.claude_client import ClaudeClient
+from app.services.ai.french_localizer import FrenchLocalizer
 from app.services.ai.localizer import LocalizedArticle, Localizer
 from app.services.ai.proofreader import Proofreader
 from app.services.ai.quality_gate import QualityGate
@@ -86,6 +88,7 @@ class ArticleProcessor:
         localizer: Localizer,
         quality_gate: QualityGate,
         image_generator: ImageGenerator | None,
+        french_localizer: FrenchLocalizer | None = None,
         translator: Translator | None = None,
         proofreader: Proofreader | None = None,
         proofread_publish_ready_threshold: int = 85,
@@ -93,6 +96,11 @@ class ArticleProcessor:
         self._localizer = localizer
         self._quality_gate = quality_gate
         self._image_generator = image_generator
+        # `french_localizer` is the new direct EN→FR path. `translator` is the
+        # legacy Darija→FR cascade kept around as a deprecated fallback for
+        # back-compat (admin `Re-traduire en français` button still uses it).
+        # Pipeline prefers `french_localizer` when both are set.
+        self._french_localizer = french_localizer
         self._translator = translator
         self._proofreader = proofreader
         self._proofread_threshold = proofread_publish_ready_threshold
@@ -107,9 +115,10 @@ class ArticleProcessor:
         skip_translation: bool = False,
         skip_proofread: bool = False,
     ) -> ArticleProcessor:
-        # The provider is wrapped so every Claude call lands in ai_logs.
-        # Localizer + Translator share the same instance — costs roll up by
-        # (provider, model) regardless of which service made the call.
+        # Wrapped provider routes every Claude call through ai_logs. All three
+        # AI services (Darija Localizer, FrenchLocalizer, Translator) share
+        # the same instance so costs roll up by (provider, model) without
+        # caring which service originated the call.
         provider = LoggingLLMProvider(ClaudeClient(settings.anthropic_api_key))
         localizer = Localizer(
             provider=provider,
@@ -117,7 +126,13 @@ class ArticleProcessor:
             prompt_version=settings.localizer_prompt_version,
         )
         image_generator = None if skip_image else _build_image_generator(settings)
-        translator = None if skip_translation else Translator(provider=provider, redis_client=redis)
+        # FR pipeline now defaults to direct EN→FR via FrenchLocalizer (PR
+        # `feat/french-localizer-v1`). Translator is retained but no longer
+        # wired into the pipeline — it remains reachable through the admin
+        # endpoint until we confirm the new path is stable.
+        french_localizer = (
+            None if skip_translation else FrenchLocalizer(provider=provider, redis_client=redis)
+        )
         # Proofreader uses OpenAI — only built when the key is set, otherwise
         # the auto-flag step is skipped silently and scores stay NULL.
         proofreader: Proofreader | None = None
@@ -131,7 +146,8 @@ class ArticleProcessor:
             localizer=localizer,
             quality_gate=QualityGate(),
             image_generator=image_generator,
-            translator=translator,
+            french_localizer=french_localizer,
+            translator=None,  # legacy cascade no longer in the default pipeline
             proofreader=proofreader,
             proofread_publish_ready_threshold=settings.proofread_publish_ready_threshold,
         )
@@ -149,13 +165,41 @@ class ArticleProcessor:
                 duration_ms=_elapsed_ms(t0),
             )
         assert raw.id is not None  # loaded row always has a PK
+        raw_id = raw.id
+
+        # Darija and French are now produced in parallel from the same EN
+        # source. Darija is required (failure → article fails); French is
+        # best-effort and absorbs its own errors so a French miss never
+        # blocks publishing. Wall-clock for the two together is bounded by
+        # the slower of the two calls (~5 s) instead of summed (~10 s).
+        async def _safe_french() -> TranslateToFrenchResult | None:
+            if self._french_localizer is None:
+                return None
+            try:
+                return await self._french_localizer.localize(
+                    title_en=raw.original_title,
+                    content_en=raw.original_content,
+                    source_name=source_name,
+                    raw_article_id=raw_id,
+                )
+            except Exception as exc:
+                log.warning(
+                    "article_processor.french_localizer_failed_soft",
+                    raw_article_id=raw_article_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                return None
 
         try:
-            article = await self._localizer.localize(
-                title=raw.original_title,
-                content=raw.original_content,
-                source_name=source_name,
-                raw_article_id=raw.id,
+            article, french_translation = await asyncio.gather(
+                self._localizer.localize(
+                    title=raw.original_title,
+                    content=raw.original_content,
+                    source_name=source_name,
+                    raw_article_id=raw.id,
+                ),
+                _safe_french(),
             )
         except AIQualityError as exc:
             log.error(
@@ -235,11 +279,13 @@ class ArticleProcessor:
                 raw_article_id=raw_article_id,
             )
 
-        # Auto-translate Darija → French. Fail-soft: a translation error
-        # leaves the FR fields null but never blocks the draft (the admin can
-        # click "Re-traduire en français" later to retry).
-        translation: TranslateToFrenchResult | None = None
-        if self._translator is not None:
+        # Pick up the French output produced in parallel above (or None if
+        # FrenchLocalizer failed-soft / wasn't configured). When neither path
+        # is configured AND a legacy Translator is still wired (e.g. older
+        # test set-up), fall back to the cascade — kept here as a safety
+        # net during the FrenchLocalizer observation window.
+        translation: TranslateToFrenchResult | None = french_translation
+        if translation is None and self._translator is not None:
             try:
                 translation = await self._translator.translate(
                     title_darija=article.title_darija,
@@ -250,7 +296,7 @@ class ArticleProcessor:
                     raw_article_id=raw_article_id,
                 )
                 log.info(
-                    "article_processor.translated_to_fr",
+                    "article_processor.translated_to_fr_cascade",
                     raw_article_id=raw_article_id,
                     cached=translation.cached,
                     content_fr_chars=len(translation.content_fr),
@@ -264,6 +310,14 @@ class ArticleProcessor:
                     error=str(exc),
                     error_type=exc.__class__.__name__,
                 )
+        elif translation is not None:
+            log.info(
+                "article_processor.localized_to_fr_direct",
+                raw_article_id=raw_article_id,
+                cached=translation.cached,
+                content_fr_chars=len(translation.content_fr),
+                duration_ms=translation.duration_ms,
+            )
 
         # Auto-flag mode: run the AI Proofreader on the produced body in each
         # populated language. The result is a hint only — it never publishes
