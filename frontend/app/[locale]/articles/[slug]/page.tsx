@@ -87,9 +87,12 @@ export default async function ArticlePage({
 
   const t = await getTranslations("article");
   const tNav = await getTranslations("nav");
+  // Semantic related rail — ranks the corpus by category + tag overlap with
+  // a freshness bonus. Replaces a previous "3 most recent" slice that had
+  // no topical relevance. Fail-soft: backend errors → empty array, the
+  // section just doesn't render below.
   const related = await publicApi
-    .getArticles(6, locale === "fr" ? "fr" : undefined)
-    .then((list) => list.filter((a) => a.slug !== slug).slice(0, 3))
+    .getRelatedArticles(slug, locale === "fr" ? "fr" : undefined, 4)
     .catch(() => [] as ArticlePublic[]);
   // Same locale-aware URL as in generateMetadata so JSON-LD mainEntityOfPage
   // agrees with the canonical and og:url.
@@ -242,7 +245,7 @@ export default async function ArticlePage({
             <h2 className="mb-8 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
               {t("related_articles")}
             </h2>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {related.map((r) => (
                 <ArticleCardPublic
                   key={r.id}

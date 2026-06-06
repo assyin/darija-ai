@@ -37,6 +37,7 @@ from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import Localizer
 from app.services.ai.proofreader import Proofreader
 from app.services.ai.translator import Translator
+from app.services.articles.related import compute_related
 from app.services.external.indexnow import notify as indexnow_notify
 from app.services.images.image_generator import ImageGenerator
 from app.services.images.r2_storage import R2Storage
@@ -104,6 +105,53 @@ async def get_public_article(
             details={"slug": slug},
         )
     return article
+
+
+@public_router.get("/{slug}/related", response_model=list[ArticlePublic])
+async def get_related_articles(
+    slug: str,
+    lang: str | None = Query(
+        default=None,
+        description="When 'fr', exclude articles that don't have a French translation.",
+    ),
+    limit: int = Query(default=4, ge=1, le=5),
+    session: AsyncSession = Depends(get_db),
+) -> list[Article]:
+    """Semantic related-articles rail powering the bottom of every article page.
+
+    Ranks the corpus by weighted overlap of `categories` (x4) + `tags` (x2)
+    + a freshness bonus (+1 if published in the last 30 days). Falls back
+    to the most-recent publications when the source has no shared signal
+    with anything else (niche-tag articles). See
+    ``services/articles/related.py`` for the full design.
+
+    Returns an empty list when the source slug is not a published article —
+    the frontend renders the rail conditionally on length anyway.
+    """
+    # Confirm source exists + is public; we only need its slug for the
+    # ranker, but a 404 here is cheaper than a silent empty rail.
+    source = (
+        await session.execute(
+            select(Article).where(
+                Article.slug == slug,
+                Article.is_published.is_(True),
+                Article.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if source is None:
+        # Mirror the public /articles/{slug} behaviour — unknown slug = 404.
+        raise NotFoundError(
+            f"Article '{slug}' not found",
+            details={"slug": slug},
+        )
+
+    return await compute_related(
+        session,
+        source_slug=slug,
+        lang=lang,
+        limit=limit,
+    )
 
 
 @public_router.get("/categories/{category_slug}", response_model=list[ArticlePublic])
