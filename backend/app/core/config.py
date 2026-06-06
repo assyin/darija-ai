@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     # list — it never auto-publishes (CLAUDE.md §1 unchanged).
     proofread_publish_ready_threshold: int = 85
 
+    # Public canonical site URL — used by IndexNow to build keyLocation +
+    # article URLs to ping. Mirrors NEXT_PUBLIC_SITE_URL on the frontend, but
+    # the backend can't read it (it's a frontend build-time variable), so
+    # we duplicate it as a backend env var.
+    public_site_url: str = "https://titritai.com"
+    # IndexNow API key (32-char hex). When None the notifier is a silent
+    # no-op — useful in dev/staging so we never accidentally ping search
+    # engines from a non-production environment.
+    indexnow_api_key: str | None = None
+
     @property
     def is_dev(self) -> bool:
         return self.environment == "dev"

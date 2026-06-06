@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
@@ -37,6 +37,7 @@ from app.services.ai.claude_client import ClaudeClient
 from app.services.ai.localizer import Localizer
 from app.services.ai.proofreader import Proofreader
 from app.services.ai.translator import Translator
+from app.services.external.indexnow import notify as indexnow_notify
 from app.services.images.image_generator import ImageGenerator
 from app.services.images.r2_storage import R2Storage
 from app.services.images.replicate_client import ReplicateClient
@@ -414,6 +415,7 @@ async def _proofread_one_article(
 @admin_router.post("/{article_id}/publish", response_model=ArticleAdminDetail)
 async def publish_article(
     article_id: int,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     user: AdminUser = Depends(require_admin),
 ) -> Article:
@@ -428,11 +430,30 @@ async def publish_article(
     article.updated_at = article.published_at
     await session.commit()
     await session.refresh(article)
+
+    # IndexNow: notify Bing/Yandex/etc as soon as the row is committed. Both
+    # AR (default locale, no prefix) and FR (when a translation exists) URLs
+    # ride in the same call so the editor doesn't pay two RTTs.
+    # BackgroundTasks runs after the HTTP response is sent — publish stays
+    # snappy and a slow IndexNow can't keep the admin tab spinning.
+    settings = get_settings()
+    site_url = settings.public_site_url
+    url_list = [f"{site_url.rstrip('/')}/articles/{article.slug}"]
+    if article.title_fr:
+        url_list.append(f"{site_url.rstrip('/')}/fr/articles/{article.slug}")
+    background_tasks.add_task(
+        indexnow_notify,
+        urls=url_list,
+        api_key=settings.indexnow_api_key,
+        site_url=site_url,
+    )
+
     logger.info(
         "admin.article.published",
         article_id=article.id,
         slug=article.slug,
         admin_email=user.email,
+        indexnow_url_count=len(url_list),
     )
     return article
 
