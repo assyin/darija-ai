@@ -26,8 +26,8 @@ from app.services.ai.llm_provider import LLMProvider
 
 logger = get_logger("services.ai.translator")
 
-PROMPT_VERSION = "v1"
-PROMPT_PATH = Path(__file__).parent / "prompts" / "translator_darija_to_fr_v1.md"
+PROMPT_VERSION = "v2"
+PROMPT_PATH = Path(__file__).parent / "prompts" / "translator_darija_to_fr_v2.md"
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 _REQUIRED_FIELDS = (
