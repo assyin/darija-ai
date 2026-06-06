@@ -27,7 +27,7 @@ Design (see SEO design doc 2026-06-06):
 
 from __future__ import annotations
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -189,10 +189,16 @@ async def _rank_by_overlap(
         LIMIT :limit
         """  # noqa: S608 — `lang` controls only an additional WHERE clause and is bound to a literal
     )
-    stmt = sql.bindparams(
-        bindparam("source_slug", source_slug),
-        bindparam("exclude_slugs", exclude_slugs),
-        bindparam("limit", limit),
+    # from_statement tells SQLAlchemy to hydrate the rows back into Article
+    # ORM objects — without it, .scalars() picks the first column (id) and
+    # FastAPI then chokes serializing ints as ArticlePublic. The text query
+    # must SELECT a.* (all columns) for the hydration to work.
+    stmt = select(Article).from_statement(
+        sql.bindparams(
+            bindparam("source_slug", source_slug),
+            bindparam("exclude_slugs", exclude_slugs),
+            bindparam("limit", limit),
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -222,9 +228,11 @@ async def _fetch_most_recent(
         LIMIT :limit
         """  # noqa: S608 — same as above, lang governs a static filter only
     )
-    stmt = sql.bindparams(
-        bindparam("exclude_slugs", exclude_slugs),
-        bindparam("limit", limit),
+    stmt = select(Article).from_statement(
+        sql.bindparams(
+            bindparam("exclude_slugs", exclude_slugs),
+            bindparam("limit", limit),
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -253,6 +261,6 @@ async def _fetch_articles_by_slugs(
           {fr_filter}
         """  # noqa: S608
     )
-    stmt = sql.bindparams(bindparam("slugs", slugs))
+    stmt = select(Article).from_statement(sql.bindparams(bindparam("slugs", slugs)))
     result = await session.execute(stmt)
     return list(result.scalars().all())
