@@ -40,7 +40,13 @@ export async function generateMetadata({
   const heroImage = article.hero_image_url;
   const ogImage = heroImage ?? `${SITE_BASE}/logo-mark.png`;
   return {
-    title,
+    // `absolute` opts out of the root layout's "%s · DarijaAI" template.
+    // The Localizer keeps meta_title under 60 chars so it already fits in
+    // Google's SERP cut-off (~60 chars desktop, ~50 mobile); appending
+    // " · DarijaAI" pushed every article 10-15 chars over the limit and
+    // SEO audit tools surfaced "Title too long" on the whole catalogue.
+    // The domain (titritai.com) carries the brand in the SERP anyway.
+    title: { absolute: title },
     description,
     alternates: { canonical: url },
     openGraph: {
