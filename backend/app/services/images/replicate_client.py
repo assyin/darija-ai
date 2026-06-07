@@ -18,12 +18,44 @@ from app.core.exceptions import ExternalServiceError
 from app.core.logging import get_logger
 from app.services.images.image_provider import ImageGenerationResult
 
+try:  # pragma: no cover - depends on prod settings module
+    import sentry_sdk
+except ImportError:  # pragma: no cover
+    sentry_sdk = None  # type: ignore[assignment]
+
 logger = get_logger("services.images.replicate_client")
 
 PROVIDER_NAME = "replicate"
 DEFAULT_MODEL = "black-forest-labs/flux-schnell"
 PRICE_PER_IMAGE_USD = Decimal("0.003")
 DOWNLOAD_TIMEOUT_SECONDS = 30.0
+
+# Substring matchers for Replicate's anti-abuse low-credit throttle. When a
+# Replicate account drops below $5 of remaining credit, the API enforces a
+# 6 req/min rate cap with burst 1 — even though the model accepts the
+# request shape and the token is valid. The pipeline normally pushes 50+
+# req/min on cron bursts, so 95%+ of calls 429 with this exact message.
+# Detect it loudly so the operator recharges *before* the cascade wastes
+# upstream Claude calls (RCA 2026-06-07: $27 of Claude spend wasted on
+# articles that died at the image step over 48h).
+_LOW_CREDIT_THROTTLE_PATTERNS: tuple[str, ...] = (
+    "less than $",
+    "while you have less than",
+    "rate limit for creating predictions is reduced",
+)
+
+
+def _is_low_credit_throttle(message: str, status: int | None) -> bool:
+    """Heuristic match against Replicate's free-text low-credit throttle error.
+
+    Only treats 429 status codes — a generic rate-limit (without the credit
+    angle) is a real burst and should retry, not page the operator.
+    """
+    if status != 429:
+        return False
+    lowered = message.lower()
+    return any(pattern in lowered for pattern in _LOW_CREDIT_THROTTLE_PATTERNS)
+
 
 # Aspect ratio → (width, height) at Flux Schnell's ~1MP default.
 _ASPECT_DIMENSIONS: dict[str, tuple[int, int]] = {
@@ -74,20 +106,51 @@ class ReplicateClient:
             output = await self._client.async_run(self._model, input=input_payload)
         except ReplicateError as exc:
             status = getattr(exc, "status", None)
-            logger.error(
-                "image.replicate.request_failed",
-                model=self._model,
-                status=status,
-                error=str(exc),
-            )
-            # 401/403/422 → fatal, don't dress up as transient
+            error_message = str(exc)
+
+            # Operational vs platform split. 429 with the low-credit pattern
+            # means recharge is required — paging the operator is the right
+            # response. Any other Replicate error stays at ERROR level so the
+            # admin isn't woken up by a transient 5xx or a content-policy
+            # rejection.
+            if _is_low_credit_throttle(error_message, status):
+                logger.critical(
+                    "image.replicate.low_credit_throttle_detected",
+                    provider=PROVIDER_NAME,
+                    model=self._model,
+                    status=status,
+                    error=error_message,
+                    action_required=(
+                        "recharge Replicate credits at "
+                        "replicate.com/account/billing (min $20 recommended)"
+                    ),
+                )
+                if sentry_sdk is not None:
+                    sentry_sdk.capture_message(
+                        f"Replicate low-credit throttle on {self._model}: {error_message[:200]}",
+                        level="error",
+                    )
+            else:
+                logger.error(
+                    "image.replicate.request_failed",
+                    model=self._model,
+                    status=status,
+                    error=error_message,
+                )
+            # Wrap with a richer message: the upstream caller (article_processor)
+            # only persists `str(exc)` to ai_logs, so the message itself has to
+            # carry enough signal to diagnose later. Truncated at 300 to stay
+            # inside the column display budget while preserving the status +
+            # the first chunk of the Replicate detail.
+            preview = error_message.replace("\n", " ").strip()[:300]
             raise ExternalServiceError(
-                f"Replicate request failed: {exc.__class__.__name__}",
+                f"Replicate request failed: {exc.__class__.__name__} (status={status}): {preview}",
                 details={
                     "provider": PROVIDER_NAME,
                     "model": self._model,
                     "status": status,
-                    "error": str(exc),
+                    "error": error_message,
+                    "low_credit_throttle": _is_low_credit_throttle(error_message, status),
                 },
             ) from exc
 
