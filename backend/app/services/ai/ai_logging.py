@@ -160,6 +160,7 @@ class LoggingLLMProvider:
         max_tokens: int = 4096,
         temperature: float = 0.7,
         metadata: dict[str, str] | None = None,
+        cache_system: bool = False,
     ) -> LLMResponse:
         raw_article_id = _extract_raw_article_id(metadata)
 
@@ -180,6 +181,7 @@ class LoggingLLMProvider:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 metadata=forwarded_metadata,
+                cache_system=cache_system,
             )
         except ExternalServiceError as exc:
             await persist_ai_log(

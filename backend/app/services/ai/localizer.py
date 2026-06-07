@@ -149,6 +149,10 @@ class Localizer:
             model=self._model,
             max_tokens=8192,
             metadata={"user_id": "system"},
+            # The localizer_v3 system prompt is ~15.6k tokens — the heaviest
+            # repeated input we send to Claude. Caching it cuts the input
+            # bill ~90% on every call after the first within the 5-min window.
+            cache_system=True,
         )
 
         parsed = self._parse_and_validate(response.text, raw_article_id)

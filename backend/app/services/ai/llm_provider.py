@@ -35,4 +35,8 @@ class LLMProvider(Protocol):
         max_tokens: int = 4096,
         temperature: float = 0.7,
         metadata: dict[str, str] | None = None,
+        # When True, ask the provider to cache the system prompt (Anthropic
+        # ephemeral cache_control). No-op on providers that auto-cache
+        # (OpenAI does this transparently for repeated prefixes ≥1024 tokens).
+        cache_system: bool = False,
     ) -> LLMResponse: ...

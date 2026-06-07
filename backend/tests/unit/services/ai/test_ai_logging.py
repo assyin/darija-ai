@@ -94,8 +94,10 @@ class _FakeProvider:
         max_tokens: int = 4096,
         temperature: float = 0.7,
         metadata: dict[str, str] | None = None,
+        cache_system: bool = False,
     ) -> LLMResponse:
         self.last_metadata = metadata
+        self.last_cache_system = cache_system
         if self._raises is not None:
             raise self._raises
         assert self._response is not None
