@@ -84,6 +84,7 @@ class FakeProvider:
         temperature: float,
         max_tokens: int,
         metadata: dict[str, str] | None = None,
+        cache_system: bool = False,
     ) -> LLMResponse:
         self.calls.append(
             {

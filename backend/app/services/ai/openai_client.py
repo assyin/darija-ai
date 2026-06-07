@@ -67,6 +67,10 @@ class OpenAIClient:
         max_tokens: int = 4096,
         temperature: float = 0.7,
         metadata: dict[str, str] | None = None,
+        # Accepted for LLMProvider Protocol parity. OpenAI auto-caches repeated
+        # prefixes ≥1024 tokens server-side (no opt-in flag), so the param is
+        # a no-op here — present so callers can stay provider-agnostic.
+        cache_system: bool = False,
     ) -> LLMResponse:
         model_to_use = model or self._default_model
 

@@ -134,6 +134,10 @@ class FrenchLocalizer:
             # Long-form bodies can reach ~3000 words ≈ 9000 tokens of output.
             max_tokens=8192,
             metadata=call_metadata,
+            # The localizer_fr_v1 system prompt sits at ~2.5k tokens — just
+            # over Anthropic's 2048-token cache minimum for Haiku. Caching it
+            # is a strict win once the second article in a batch hits.
+            cache_system=True,
         )
         duration_ms = int((time.perf_counter() - start) * 1000)
 

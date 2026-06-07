@@ -204,3 +204,67 @@ async def get_cost_summary(
         "top_articles": top_articles,
         "recent_failures": recent_failures,
     }
+
+
+# Substring patterns that classify an ai_logs.error row as a billing/quota
+# incident. Mirrors `_BILLING_ERROR_PATTERNS` in claude_client.py — kept in
+# sync manually because the SQL layer can't easily import a Python tuple.
+# Add or change a pattern here AND there together.
+_BILLING_ILIKE_PATTERNS: tuple[str, ...] = (
+    "%credit balance%",
+    "%insufficient%",
+    "%billing%",
+    "%quota%",
+    "%payment%",
+)
+
+
+@router.get("/provider-health", response_model=dict[str, Any])
+async def get_provider_health(
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> dict[str, Any]:
+    """Surface operational health for the AI providers we depend on.
+
+    Today this only reports the Anthropic billing/quota state, which is the
+    one failure mode that genuinely takes the pipeline down (CLAUDE.md hard
+    no on auto-publish without manual recharge). The endpoint scans the last
+    24h of ``ai_logs`` for failed Claude calls whose error message matches
+    a billing-pattern substring, returns the count and the most recent
+    timestamp, plus a coarse ``status`` ('ok' / 'billing_error') the admin
+    UI banner can switch on without parsing strings.
+
+    Authenticated admin-only. Cheap query — count + 1 row, indexed on
+    ``provider`` and ``success``.
+    """
+    sql = text(
+        """
+        SELECT
+          COUNT(*) FILTER (
+            WHERE LOWER(COALESCE(error, '')) ILIKE ANY(:patterns)
+          )::int AS billing_errors_24h,
+          MAX(created_at) FILTER (
+            WHERE LOWER(COALESCE(error, '')) ILIKE ANY(:patterns)
+          ) AS last_billing_error_at
+        FROM ai_logs
+        WHERE provider = 'claude'
+          AND success = FALSE
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        """
+    )
+    row = (
+        await session.execute(sql, {"patterns": list(_BILLING_ILIKE_PATTERNS)})
+    ).mappings().one()
+    count = int(row["billing_errors_24h"] or 0)
+    last_at = row["last_billing_error_at"]
+    return {
+        "status": "billing_error" if count > 0 else "ok",
+        "provider": "claude",
+        "billing_errors_24h": count,
+        "last_billing_error_at": last_at,
+        "action_required": (
+            "Recharge Anthropic credits at console.anthropic.com/settings/billing"
+            if count > 0
+            else None
+        ),
+    }
