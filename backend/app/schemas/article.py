@@ -99,6 +99,33 @@ class BulkProofreadRequest(BaseModel):
     only_unevaluated: bool = True
 
 
+class AdminArticlesCounts(BaseModel):
+    """Global counts shown in the /admin/articles filter badges.
+
+    Independent of pagination + the optional `is_published` query filter so the
+    badges always reflect the full DB reality, not just the slice the page
+    happens to be displaying. Drives the four tabs: Tous / Brouillons /
+    Prêts à publier / Publiés.
+    """
+
+    all: int = Field(description="Total live (non-soft-deleted) articles.")
+    drafts: int = Field(description="Articles with is_published = False.")
+    ready: int = Field(description="Drafts the Proofreader flagged ready to publish.")
+    published: int = Field(description="Articles with is_published = True.")
+
+
+class AdminArticlesListResponse(BaseModel):
+    """Wrapper response for /admin/articles.
+
+    Returns the paginated `items` plus the un-paginated `counts`. This lets the
+    UI show 'Publiés: 68' even when the first page of newest articles happens
+    to be all drafts — the editorial reality stays visible.
+    """
+
+    items: list[ArticleAdmin]
+    counts: AdminArticlesCounts
+
+
 class BulkProofreadResult(BaseModel):
     """Summary returned to the admin after a bulk-evaluate run."""
 

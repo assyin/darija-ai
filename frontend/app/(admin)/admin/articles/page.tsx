@@ -19,7 +19,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { ArticleAdmin } from "@/lib/types";
+import type {
+  AdminArticlesCounts,
+  AdminArticlesListResponse,
+  ArticleAdmin,
+} from "@/lib/types";
 
 type Filter = "all" | "drafts" | "ready" | "published";
 
@@ -45,7 +49,7 @@ export default function ArticlesListPage() {
       const params = new URLSearchParams({ limit: "50" });
       if (filter === "drafts") params.set("is_published", "false");
       if (filter === "published") params.set("is_published", "true");
-      return adminApi.get<ArticleAdmin[]>(`/articles?${params}`);
+      return adminApi.get<AdminArticlesListResponse>(`/articles?${params}`);
     },
   });
 
@@ -66,20 +70,37 @@ export default function ArticlesListPage() {
     },
   });
 
-  const all = data ?? [];
-  const drafts = all.filter((a) => !a.is_published);
-  const published = all.filter((a) => a.is_published);
-  // "Ready to publish" = drafts that the AI Proofreader greenlighted. Per
-  // CLAUDE.md §1 this stays a *hint* — the editor still clicks Publish.
-  const ready = drafts.filter((a) => a.proofread_ready_to_publish);
-  // Drafts that have never been scored — targets of the bulk-evaluate run.
-  const unevaluatedDrafts = drafts.filter((a) => a.proofread_at == null);
+  // Items returned for the current page (paginated, filtered by `is_published`
+  // when a draft/published filter is active). The counts below come from the
+  // server in a separate aggregate query so the filter badges show the real
+  // DB totals even when the currently visible 50 rows are all of one kind.
+  //
+  // Memoised so the `[]` and zero-counts fallbacks aren't fresh literals on
+  // every render — that would invalidate the `visible` memo below for nothing.
+  const items: ArticleAdmin[] = React.useMemo(() => data?.items ?? [], [data]);
+  const counts: AdminArticlesCounts = React.useMemo(
+    () =>
+      data?.counts ?? {
+        all: 0,
+        drafts: 0,
+        ready: 0,
+        published: 0,
+      },
+    [data],
+  );
+  // Within the current page only — used for the "Évaluer N brouillons" button
+  // which acts on the visible drafts. The badges and tab counts must not use
+  // these; they read from `counts` above.
+  const itemsDrafts = items.filter((a) => !a.is_published);
+  const unevaluatedDrafts = itemsDrafts.filter((a) => a.proofread_at == null);
+  const itemsReady = itemsDrafts.filter((a) => a.proofread_ready_to_publish);
 
   const visible = React.useMemo(() => {
-    let list = all;
-    if (filter === "drafts") list = drafts;
-    if (filter === "ready") list = ready;
-    if (filter === "published") list = published;
+    // `items` already honours the `is_published` filter via the API. The
+    // remaining client-side filtering is the "ready to publish" sub-tab,
+    // which selects from the drafts page, and the search.
+    let list: ArticleAdmin[] = items;
+    if (filter === "ready") list = itemsReady;
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter((a) =>
@@ -89,7 +110,7 @@ export default function ArticlesListPage() {
       );
     }
     return list;
-  }, [all, drafts, ready, published, filter, query]);
+  }, [items, itemsReady, filter, query]);
 
   return (
     <div className="space-y-6">
@@ -97,7 +118,7 @@ export default function ArticlesListPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Articles</h1>
           <p className="text-sm text-[var(--color-muted-foreground)]">
-            {all.length} articles • {drafts.length} brouillons • {published.length} publiés
+            {counts.all} articles • {counts.drafts} brouillons • {counts.published} publiés
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -130,22 +151,22 @@ export default function ArticlesListPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>
-          Tous <Badge variant="muted" className="ml-2">{all.length}</Badge>
+          Tous <Badge variant="muted" className="ml-2">{counts.all}</Badge>
         </FilterButton>
         <FilterButton active={filter === "drafts"} onClick={() => setFilter("drafts")}>
-          Brouillons <Badge variant="muted" className="ml-2">{drafts.length}</Badge>
+          Brouillons <Badge variant="muted" className="ml-2">{counts.drafts}</Badge>
         </FilterButton>
         <FilterButton active={filter === "ready"} onClick={() => setFilter("ready")}>
           Prêts à publier{" "}
           <Badge
-            variant={ready.length > 0 ? "success" : "muted"}
+            variant={counts.ready > 0 ? "success" : "muted"}
             className="ml-2"
           >
-            {ready.length}
+            {counts.ready}
           </Badge>
         </FilterButton>
         <FilterButton active={filter === "published"} onClick={() => setFilter("published")}>
-          Publiés <Badge variant="muted" className="ml-2">{published.length}</Badge>
+          Publiés <Badge variant="muted" className="ml-2">{counts.published}</Badge>
         </FilterButton>
       </div>
 
