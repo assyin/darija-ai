@@ -252,9 +252,7 @@ async def get_provider_health(
           AND created_at >= NOW() - INTERVAL '24 hours'
         """
     )
-    row = (
-        await session.execute(sql, {"patterns": list(_BILLING_ILIKE_PATTERNS)})
-    ).mappings().one()
+    row = (await session.execute(sql, {"patterns": list(_BILLING_ILIKE_PATTERNS)})).mappings().one()
     count = int(row["billing_errors_24h"] or 0)
     last_at = row["last_billing_error_at"]
     return {

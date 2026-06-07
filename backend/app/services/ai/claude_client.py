@@ -145,8 +145,7 @@ class ClaudeClient:
                 )
                 if sentry_sdk is not None:
                     sentry_sdk.capture_message(
-                        f"Anthropic billing/quota error on {model_to_use}: "
-                        f"{str(exc)[:200]}",
+                        f"Anthropic billing/quota error on {model_to_use}: {str(exc)[:200]}",
                         level="error",
                     )
             else:
@@ -204,9 +203,7 @@ class ClaudeClient:
         # is performing per batch. Avoid log spam by computing only what we
         # already have.
         total_input_billed = input_tokens + cache_creation + cache_read
-        cache_hit_ratio = (
-            float(cache_read) / total_input_billed if total_input_billed else 0.0
-        )
+        cache_hit_ratio = float(cache_read) / total_input_billed if total_input_billed else 0.0
         logger.info(
             "ai.claude.request_completed",
             model=model_to_use,
