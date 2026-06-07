@@ -62,6 +62,22 @@ export interface ArticleAdmin {
   proofread_ready_to_publish: boolean;
 }
 
+export interface AdminArticlesCounts {
+  /** Total live (non-soft-deleted) articles. */
+  all: number;
+  /** Articles with is_published = false. */
+  drafts: number;
+  /** Drafts the Proofreader flagged ready to publish. */
+  ready: number;
+  /** Articles with is_published = true. */
+  published: number;
+}
+
+export interface AdminArticlesListResponse {
+  items: ArticleAdmin[];
+  counts: AdminArticlesCounts;
+}
+
 export interface ArticleAdminDetail extends ArticleAdmin {
   content_darija: string;
   meta_title: string | null;
