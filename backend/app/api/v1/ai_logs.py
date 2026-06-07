@@ -210,7 +210,7 @@ async def get_cost_summary(
 # incident. Mirrors `_BILLING_ERROR_PATTERNS` in claude_client.py — kept in
 # sync manually because the SQL layer can't easily import a Python tuple.
 # Add or change a pattern here AND there together.
-_BILLING_ILIKE_PATTERNS: tuple[str, ...] = (
+_CLAUDE_BILLING_ILIKE_PATTERNS: tuple[str, ...] = (
     "%credit balance%",
     "%insufficient%",
     "%billing%",
@@ -218,51 +218,114 @@ _BILLING_ILIKE_PATTERNS: tuple[str, ...] = (
     "%payment%",
 )
 
+# Replicate's low-credit anti-abuse throttle message (see RCA 2026-06-07).
+# Same kept-in-sync rule with `_LOW_CREDIT_THROTTLE_PATTERNS` in
+# replicate_client.py: edit both together.
+_REPLICATE_THROTTLE_ILIKE_PATTERNS: tuple[str, ...] = (
+    "%less than $%",
+    "%while you have less than%",
+    "%rate limit for creating predictions is reduced%",
+)
 
-@router.get("/provider-health", response_model=dict[str, Any])
-async def get_provider_health(
-    session: AsyncSession = Depends(get_db),
-    user: AdminUser = Depends(require_admin),
-) -> dict[str, Any]:
-    """Surface operational health for the AI providers we depend on.
 
-    Today this only reports the Anthropic billing/quota state, which is the
-    one failure mode that genuinely takes the pipeline down (CLAUDE.md hard
-    no on auto-publish without manual recharge). The endpoint scans the last
-    24h of ``ai_logs`` for failed Claude calls whose error message matches
-    a billing-pattern substring, returns the count and the most recent
-    timestamp, plus a coarse ``status`` ('ok' / 'billing_error') the admin
-    UI banner can switch on without parsing strings.
+async def _scan_provider_billing(
+    session: AsyncSession,
+    *,
+    provider: str,
+    patterns: tuple[str, ...],
+) -> tuple[int, Any]:
+    """Count and last-seen timestamp of billing-pattern failures in the last 24h.
 
-    Authenticated admin-only. Cheap query — count + 1 row, indexed on
-    ``provider`` and ``success``.
+    Pulled out of the route so both providers share one well-tested query.
+    Returns ``(count, last_at)`` — ``last_at`` is None when count is 0.
     """
     sql = text(
         """
         SELECT
           COUNT(*) FILTER (
             WHERE LOWER(COALESCE(error, '')) ILIKE ANY(:patterns)
-          )::int AS billing_errors_24h,
+          )::int AS errors_24h,
           MAX(created_at) FILTER (
             WHERE LOWER(COALESCE(error, '')) ILIKE ANY(:patterns)
-          ) AS last_billing_error_at
+          ) AS last_at
         FROM ai_logs
-        WHERE provider = 'claude'
+        WHERE provider = :provider
           AND success = FALSE
           AND created_at >= NOW() - INTERVAL '24 hours'
         """
     )
-    row = (await session.execute(sql, {"patterns": list(_BILLING_ILIKE_PATTERNS)})).mappings().one()
-    count = int(row["billing_errors_24h"] or 0)
-    last_at = row["last_billing_error_at"]
+    row = (
+        (await session.execute(sql, {"provider": provider, "patterns": list(patterns)}))
+        .mappings()
+        .one()
+    )
+    return int(row["errors_24h"] or 0), row["last_at"]
+
+
+@router.get("/provider-health", response_model=dict[str, Any])
+async def get_provider_health(
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> dict[str, Any]:
+    """Surface operational health for every external AI provider we depend on.
+
+    Currently covers the two providers whose credit balance can take the
+    pipeline down silently:
+
+      - **claude** (Anthropic): low credit → BadRequestError, every call fails.
+      - **replicate** (Flux Schnell): credit < $5 → 429 throttle at 6 req/min,
+        95%+ of pipeline calls fail and waste the upstream Claude cost.
+
+    Each provider entry returns:
+      - ``status``: 'ok' / 'billing_error' (claude) / 'low_credit_throttle' (replicate)
+      - ``errors_24h``: count of matching failures in the last 24h
+      - ``last_error_at``: ISO timestamp of the most recent matching failure
+      - ``action_required``: human-readable string with the URL to recharge
+
+    Top-level ``overall_status`` reports the worst of the providers so the
+    admin banner can light up red without parsing the per-provider entries.
+
+    Authenticated admin-only. Two cheap GROUP BY queries on a
+    (provider, success)-indexed table.
+    """
+    claude_count, claude_last = await _scan_provider_billing(
+        session,
+        provider="claude",
+        patterns=_CLAUDE_BILLING_ILIKE_PATTERNS,
+    )
+    replicate_count, replicate_last = await _scan_provider_billing(
+        session,
+        provider="replicate",
+        patterns=_REPLICATE_THROTTLE_ILIKE_PATTERNS,
+    )
+
+    claude_status = "billing_error" if claude_count > 0 else "ok"
+    replicate_status = "low_credit_throttle" if replicate_count > 0 else "ok"
+    overall_status = "ok" if claude_status == "ok" and replicate_status == "ok" else "billing_error"
+
     return {
-        "status": "billing_error" if count > 0 else "ok",
-        "provider": "claude",
-        "billing_errors_24h": count,
-        "last_billing_error_at": last_at,
-        "action_required": (
-            "Recharge Anthropic credits at console.anthropic.com/settings/billing"
-            if count > 0
-            else None
-        ),
+        "overall_status": overall_status,
+        "providers": {
+            "claude": {
+                "status": claude_status,
+                "errors_24h": claude_count,
+                "last_error_at": claude_last,
+                "action_required": (
+                    "Recharge Anthropic credits at console.anthropic.com/settings/billing"
+                    if claude_count > 0
+                    else None
+                ),
+            },
+            "replicate": {
+                "status": replicate_status,
+                "errors_24h": replicate_count,
+                "last_error_at": replicate_last,
+                "action_required": (
+                    "Recharge Replicate credits at replicate.com/account/billing "
+                    "(min $20 recommended to stay above the $5 anti-abuse throttle)"
+                    if replicate_count > 0
+                    else None
+                ),
+            },
+        },
     }
