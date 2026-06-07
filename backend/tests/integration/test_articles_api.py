@@ -5,7 +5,6 @@ from sqlalchemy import select
 
 from app.core.db import AsyncSessionLocal
 from app.models.article import Article
-from app.models.raw_article import RawArticle
 
 
 async def _existing_article_id() -> int | None:
@@ -26,16 +25,27 @@ async def test_admin_list_articles_returns_existing(
     if article_id is None:
         resp = await client.get("/api/v1/admin/articles", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json() == []
+        body = resp.json()
+        assert body["items"] == []
+        # Empty DB: every count bucket must be zero.
+        assert body["counts"] == {"all": 0, "drafts": 0, "ready": 0, "published": 0}
         return
 
     resp = await client.get("/api/v1/admin/articles?is_published=false", headers=auth_headers)
     assert resp.status_code == 200
-    items = resp.json()
+    body = resp.json()
+    items = body["items"]
     ids = {item["id"] for item in items}
     assert article_id in ids
     sample = next(it for it in items if it["id"] == article_id)
     assert sample["is_published"] is False
+    # Counts come back with all four buckets even when the page is filtered
+    # to drafts only — that's the whole point of this PR.
+    counts = body["counts"]
+    assert set(counts) == {"all", "drafts", "ready", "published"}
+    # And counts must not be limited to the filtered slice — the live total
+    # is always >= the number of drafts shown.
+    assert counts["all"] >= counts["drafts"]
 
 
 async def test_admin_get_article_unknown_id_404(
