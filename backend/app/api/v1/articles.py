@@ -352,6 +352,7 @@ async def bulk_evaluate_proofread(
     )
 
     threshold = settings.proofread_publish_ready_threshold
+    naturalness_floor = settings.proofread_naturalness_floor
     semaphore = asyncio.Semaphore(_BULK_PROOFREAD_CONCURRENCY)
     start = time.perf_counter()
 
@@ -369,6 +370,7 @@ async def bulk_evaluate_proofread(
                     article_id=article_id,
                     proofreader=proofreader,
                     threshold=threshold,
+                    naturalness_floor=naturalness_floor,
                 )
 
         results = await asyncio.gather(
@@ -420,6 +422,7 @@ async def _proofread_one_article(
     article_id: int,
     proofreader: Proofreader,
     threshold: int,
+    naturalness_floor: int,
 ) -> tuple[bool, bool, int]:
     """Score one article's body in each populated language; update the row.
 
@@ -440,6 +443,8 @@ async def _proofread_one_article(
 
         score_darija: int | None = None
         score_fr: int | None = None
+        nat_darija: int | None = None
+        nat_fr: int | None = None
         successful_calls = 0
         attempted_calls = 0
 
@@ -451,6 +456,7 @@ async def _proofread_one_article(
                 field="body",
             )
             score_darija = result.score
+            nat_darija = result.naturalness_score
             successful_calls += 1
         except Exception as exc:
             logger.warning(
@@ -469,6 +475,7 @@ async def _proofread_one_article(
                     field="body",
                 )
                 score_fr = result_fr.score
+                nat_fr = result_fr.naturalness_score
                 successful_calls += 1
             except Exception as exc:
                 logger.warning(
@@ -483,13 +490,20 @@ async def _proofread_one_article(
         if not evaluated:
             return False, failed_both, successful_calls
 
-        # Same readiness rule as the pipeline: every populated language
-        # must clear the threshold; a missing FR is not blocking.
-        ready = (
+        # Same readiness rule as the pipeline: every populated language must
+        # clear BOTH the headline threshold AND the naturalness floor. A
+        # missing FR is not blocking; a missing naturalness sub-score is
+        # treated as "unknown, not blocking" so legacy cached entries are
+        # not penalized.
+        darija_passes = (
             score_darija is not None
             and score_darija >= threshold
-            and (score_fr is None or score_fr >= threshold)
+            and (nat_darija is None or nat_darija >= naturalness_floor)
         )
+        fr_passes = score_fr is None or (
+            score_fr >= threshold and (nat_fr is None or nat_fr >= naturalness_floor)
+        )
+        ready = darija_passes and fr_passes
 
         article.proofread_score_darija = score_darija
         article.proofread_score_fr = score_fr
@@ -625,19 +639,38 @@ async def proofread_article_field(
     persisted_to_card = False
     if payload.field == "body" and payload.lang in ("darija", "french"):
         threshold = settings.proofread_publish_ready_threshold
+        naturalness_floor = settings.proofread_naturalness_floor
         if payload.lang == "darija":
             article.proofread_score_darija = result.score
         else:
             article.proofread_score_fr = result.score
         # Recompute readiness with the existing scores from the other
-        # language (Darija required; FR optional).
+        # language (Darija required; FR optional). For the JUST-evaluated
+        # language we have the naturalness sub-score in `result`; for the
+        # other language we only have the headline score persisted in DB,
+        # so the floor cannot be re-checked there — treated as "unknown,
+        # not blocking" which matches the bulk-evaluate / pipeline rule.
         dr_score = article.proofread_score_darija
         fr_score = article.proofread_score_fr
-        article.proofread_ready_to_publish = (
+        just_evaluated_nat = result.naturalness_score
+        darija_passes = (
             dr_score is not None
             and dr_score >= threshold
-            and (fr_score is None or fr_score >= threshold)
+            and (
+                payload.lang != "darija"
+                or just_evaluated_nat is None
+                or just_evaluated_nat >= naturalness_floor
+            )
         )
+        fr_passes = fr_score is None or (
+            fr_score >= threshold
+            and (
+                payload.lang != "french"
+                or just_evaluated_nat is None
+                or just_evaluated_nat >= naturalness_floor
+            )
+        )
+        article.proofread_ready_to_publish = darija_passes and fr_passes
         article.proofread_at = datetime.now(UTC)
         article.updated_at = article.proofread_at
         await session.commit()

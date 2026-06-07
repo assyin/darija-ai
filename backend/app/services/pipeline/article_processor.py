@@ -91,7 +91,8 @@ class ArticleProcessor:
         french_localizer: FrenchLocalizer | None = None,
         translator: Translator | None = None,
         proofreader: Proofreader | None = None,
-        proofread_publish_ready_threshold: int = 85,
+        proofread_publish_ready_threshold: int = 80,
+        proofread_naturalness_floor: int = 75,
     ) -> None:
         self._localizer = localizer
         self._quality_gate = quality_gate
@@ -104,6 +105,7 @@ class ArticleProcessor:
         self._translator = translator
         self._proofreader = proofreader
         self._proofread_threshold = proofread_publish_ready_threshold
+        self._proofread_naturalness_floor = proofread_naturalness_floor
 
     @classmethod
     def from_settings(
@@ -150,6 +152,7 @@ class ArticleProcessor:
             translator=None,  # legacy cascade no longer in the default pipeline
             proofreader=proofreader,
             proofread_publish_ready_threshold=settings.proofread_publish_ready_threshold,
+            proofread_naturalness_floor=settings.proofread_naturalness_floor,
         )
 
     async def process(self, raw_article_id: int) -> ProcessOutcome:
@@ -389,6 +392,12 @@ class ArticleProcessor:
 
         score_darija: int | None = None
         score_fr: int | None = None
+        # Naturalness sub-score per language — needed for the v4 floor gate.
+        # None means "we didn't get a sub-score back" (legacy cached entry,
+        # parse failure) and the floor is treated as "not blocking" so we
+        # don't reject articles for a missing measurement.
+        nat_darija: int | None = None
+        nat_fr: int | None = None
 
         try:
             result_darija = await self._proofreader.proofread(
@@ -397,6 +406,7 @@ class ArticleProcessor:
                 field="body",
             )
             score_darija = result_darija.score
+            nat_darija = result_darija.naturalness_score
         except Exception as exc:
             log.warning(
                 "article_processor.proofread_darija_failed_soft",
@@ -413,6 +423,7 @@ class ArticleProcessor:
                     field="body",
                 )
                 score_fr = result_fr.score
+                nat_fr = result_fr.naturalness_score
             except Exception as exc:
                 log.warning(
                     "article_processor.proofread_fr_failed_soft",
@@ -421,14 +432,22 @@ class ArticleProcessor:
                     error_type=exc.__class__.__name__,
                 )
 
-        # Compute ready-to-publish: every populated language must clear the
-        # threshold. A missing language (FR not produced) does not block.
+        # Compute ready-to-publish: every populated language must clear BOTH
+        # the headline threshold AND the naturalness floor. A missing
+        # language (FR not produced) does not block. A missing naturalness
+        # sub-score (legacy cached entry) does not block — only an explicit
+        # naturalness below the floor blocks.
         threshold = self._proofread_threshold
-        ready = (
+        floor = self._proofread_naturalness_floor
+        darija_passes = (
             score_darija is not None
             and score_darija >= threshold
-            and (score_fr is None or score_fr >= threshold)
+            and (nat_darija is None or nat_darija >= floor)
         )
+        fr_passes = score_fr is None or (
+            score_fr >= threshold and (nat_fr is None or nat_fr >= floor)
+        )
+        ready = darija_passes and fr_passes
 
         # Only mark a proofread_at timestamp when SOMETHING was scored — a
         # double-failure run should not clobber prior scores in the upsert
@@ -441,7 +460,10 @@ class ArticleProcessor:
             raw_article_id=raw_article_id,
             score_darija=score_darija,
             score_fr=score_fr,
+            naturalness_darija=nat_darija,
+            naturalness_fr=nat_fr,
             threshold=threshold,
+            naturalness_floor=floor,
             ready_to_publish=ready,
             persisted=any_score,
         )

@@ -69,10 +69,19 @@ class Settings(BaseSettings):
 
     # Auto-flag mode for the editorial AI proofreader. When the pipeline runs
     # the Proofreader on a new draft, an article is flagged "ready to publish"
-    # if the body score for every populated language is at or above this
-    # threshold. The flag is a hint surfaced as a green badge in the admin
-    # list — it never auto-publishes (CLAUDE.md §1 unchanged).
-    proofread_publish_ready_threshold: int = 85
+    # if BOTH conditions hold for every populated language:
+    #   1. body score >= proofread_publish_ready_threshold (weighted avg, v4)
+    #   2. naturalness sub-score >= proofread_naturalness_floor (hard gate)
+    # The flag is a hint surfaced as a green badge in the admin list — it
+    # never auto-publishes (CLAUDE.md §1 unchanged). Threshold dropped from
+    # 85 to 80 with the v4 prompt + v3 weighted-avg aggregation, because the
+    # v4 evaluator (anti-anchoring prompt, sandbox-validated on 30 articles)
+    # plateaus the real-quality ceiling around 84 — keeping 85 would mean
+    # zero auto-flags. 80 captures the upper ~60% of drafts; naturalness
+    # floor 75 preserves the editorial signal that the FR/EN-source v2
+    # plateau of 75 was the genuine quality floor (not an artifact).
+    proofread_publish_ready_threshold: int = 80
+    proofread_naturalness_floor: int = 75
 
     # Public canonical site URL — used by IndexNow to build keyLocation +
     # article URLs to ping. Mirrors NEXT_PUBLIC_SITE_URL on the frontend, but
