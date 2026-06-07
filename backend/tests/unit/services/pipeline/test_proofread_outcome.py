@@ -1,14 +1,19 @@
 """Unit tests for the in-pipeline auto-flag proofread step.
 
-Exercises ``ArticleProcessor._proofread_or_skip`` (and its interaction with
-``_persist_draft`` via a fake) — no DB, no OpenAI calls.
+Exercises ``ArticleProcessor._proofread_or_skip`` — no DB, no OpenAI calls.
 
-The contract these tests pin:
+The contract these tests pin (v4 aggregation + v3 naturalness floor):
 
   - When the Proofreader is disabled, the outcome is empty and the score
     columns are not touched (``proofread_at`` stays None).
-  - When both languages clear the configured threshold, ready_to_publish
-    is true.
+  - When both languages clear BOTH the threshold AND the naturalness floor,
+    ready_to_publish is true.
+  - When the headline clears but naturalness is below the floor on the
+    populated language, ready_to_publish is FALSE — even when the score
+    is good (this is the gate the user wanted).
+  - When the naturalness sub-score is missing (legacy cached entry, parse
+    failure), it is treated as "unknown, not blocking" so we don't reject
+    articles for a missing measurement.
   - When one language fails but the other clears, the surviving language
     drives the decision; a failure does NOT zero a passing score.
   - When BOTH languages fail, ``proofread_at`` is None so the upsert path
@@ -29,7 +34,12 @@ from app.services.pipeline.article_processor import (
 )
 
 
-def _fake_processor(*, proofreader: Any, threshold: int = 85) -> ArticleProcessor:
+def _fake_processor(
+    *,
+    proofreader: Any,
+    threshold: int = 80,
+    naturalness_floor: int = 75,
+) -> ArticleProcessor:
     """Build an ArticleProcessor with only the proofreader wired.
 
     Other collaborators (localizer, quality_gate, …) are required by the
@@ -43,12 +53,17 @@ def _fake_processor(*, proofreader: Any, threshold: int = 85) -> ArticleProcesso
         translator=None,
         proofreader=proofreader,
         proofread_publish_ready_threshold=threshold,
+        proofread_naturalness_floor=naturalness_floor,
     )
 
 
-def _result(score: int) -> ProofreadResult:
+def _result(score: int, *, naturalness: int | None = None) -> ProofreadResult:
+    """Build a minimal ProofreadResult. Tests that need the naturalness floor
+    to engage pass an explicit ``naturalness`` sub-score; legacy tests that
+    don't care leave it None — which the v4 floor treats as 'not blocking'."""
     return ProofreadResult(
         score=score,
+        naturalness_score=naturalness,
         summary="",
         suggestions=[],
         lang="darija",
@@ -71,17 +86,22 @@ async def test_proofread_disabled_returns_empty_outcome() -> None:
     )
     assert outcome == ProofreadOutcome()
     assert outcome.ready_to_publish is False
-    assert outcome.proofread_at is None  # ← critical: upsert path won't touch existing scores
+    assert outcome.proofread_at is None  # critical: upsert path won't touch existing scores
 
 
 # --- Happy paths -------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_both_scores_above_threshold_is_ready() -> None:
+async def test_both_scores_and_naturalness_above_thresholds_is_ready() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(90), _result(88)])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(85, naturalness=80),
+            _result(82, naturalness=78),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -89,17 +109,17 @@ async def test_both_scores_above_threshold_is_ready() -> None:
         content_fr="fr body",
     )
 
-    assert outcome.score_darija == 90
-    assert outcome.score_fr == 88
+    assert outcome.score_darija == 85
+    assert outcome.score_fr == 82
     assert outcome.ready_to_publish is True
     assert outcome.proofread_at is not None
 
 
 @pytest.mark.asyncio
-async def test_darija_only_clears_threshold_when_fr_absent() -> None:
+async def test_darija_only_clears_when_fr_absent() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(86)])  # called once
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(side_effect=[_result(85, naturalness=80)])
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -107,10 +127,9 @@ async def test_darija_only_clears_threshold_when_fr_absent() -> None:
         content_fr=None,
     )
 
-    assert outcome.score_darija == 86
+    assert outcome.score_darija == 85
     assert outcome.score_fr is None
     assert outcome.ready_to_publish is True
-    # Proofreader called once (Darija only) — never for FR when content_fr is None.
     assert pr.proofread.await_count == 1
 
 
@@ -120,8 +139,13 @@ async def test_darija_only_clears_threshold_when_fr_absent() -> None:
 @pytest.mark.asyncio
 async def test_darija_below_threshold_blocks_ready() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(70), _result(95)])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(75, naturalness=80),
+            _result(90, naturalness=85),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -129,16 +153,21 @@ async def test_darija_below_threshold_blocks_ready() -> None:
         content_fr="fr body",
     )
 
-    assert outcome.score_darija == 70
-    assert outcome.score_fr == 95
-    assert outcome.ready_to_publish is False
+    assert outcome.score_darija == 75
+    assert outcome.score_fr == 90
+    assert outcome.ready_to_publish is False  # darija below threshold
 
 
 @pytest.mark.asyncio
 async def test_fr_below_threshold_blocks_ready() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(95), _result(60)])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(90, naturalness=85),
+            _result(70, naturalness=80),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -146,16 +175,21 @@ async def test_fr_below_threshold_blocks_ready() -> None:
         content_fr="fr body",
     )
 
-    assert outcome.score_darija == 95
-    assert outcome.score_fr == 60
-    assert outcome.ready_to_publish is False
+    assert outcome.score_darija == 90
+    assert outcome.score_fr == 70
+    assert outcome.ready_to_publish is False  # fr below threshold
 
 
 @pytest.mark.asyncio
 async def test_exact_threshold_is_ready() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(85), _result(85)])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(80, naturalness=75),  # both at floor
+            _result(80, naturalness=75),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -163,6 +197,73 @@ async def test_exact_threshold_is_ready() -> None:
         content_fr="fr body",
     )
     assert outcome.ready_to_publish is True
+
+
+# --- Naturalness floor (v3 gate) --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_naturalness_below_floor_blocks_ready_even_when_score_clears() -> None:
+    """The key v4 contract: a good headline score but weak naturalness must NOT pass."""
+    pr = MagicMock()
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(82, naturalness=70),  # score clears 80; naturalness < 75
+            _result(82, naturalness=78),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
+
+    outcome = await proc._proofread_or_skip(
+        raw_article_id=1,
+        content_darija="dr body",
+        content_fr="fr body",
+    )
+
+    assert outcome.score_darija == 82
+    assert outcome.ready_to_publish is False  # naturalness floor engaged
+
+
+@pytest.mark.asyncio
+async def test_naturalness_floor_on_fr_blocks_ready() -> None:
+    """Same gate applies to the French sub-score."""
+    pr = MagicMock()
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(85, naturalness=82),
+            _result(85, naturalness=72),  # FR naturalness too low
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
+
+    outcome = await proc._proofread_or_skip(
+        raw_article_id=1,
+        content_darija="dr body",
+        content_fr="fr body",
+    )
+
+    assert outcome.ready_to_publish is False
+
+
+@pytest.mark.asyncio
+async def test_missing_naturalness_subscore_is_not_blocking() -> None:
+    """Legacy cached entries lack the sub-score; treat as 'unknown, not blocking'."""
+    pr = MagicMock()
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(85, naturalness=None),  # legacy entry, no sub-score
+            _result(85, naturalness=None),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
+
+    outcome = await proc._proofread_or_skip(
+        raw_article_id=1,
+        content_darija="dr body",
+        content_fr="fr body",
+    )
+
+    assert outcome.ready_to_publish is True  # score clears, floor not enforced
 
 
 # --- Fail-soft semantics -----------------------------------------------------
@@ -171,8 +272,13 @@ async def test_exact_threshold_is_ready() -> None:
 @pytest.mark.asyncio
 async def test_fr_failure_does_not_zero_darija_score() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[_result(92), RuntimeError("openai 503")])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            _result(88, naturalness=82),
+            RuntimeError("openai 503"),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -180,9 +286,9 @@ async def test_fr_failure_does_not_zero_darija_score() -> None:
         content_fr="fr body",
     )
 
-    assert outcome.score_darija == 92
+    assert outcome.score_darija == 88
     assert outcome.score_fr is None
-    # Surviving Darija clears threshold; missing FR is treated as "not blocking".
+    # Surviving Darija clears threshold + floor; missing FR is not blocking.
     assert outcome.ready_to_publish is True
     assert outcome.proofread_at is not None
 
@@ -190,8 +296,13 @@ async def test_fr_failure_does_not_zero_darija_score() -> None:
 @pytest.mark.asyncio
 async def test_darija_failure_does_not_zero_fr_score() -> None:
     pr = MagicMock()
-    pr.proofread = AsyncMock(side_effect=[RuntimeError("openai 503"), _result(92)])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    pr.proofread = AsyncMock(
+        side_effect=[
+            RuntimeError("openai 503"),
+            _result(90, naturalness=80),
+        ]
+    )
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -200,7 +311,7 @@ async def test_darija_failure_does_not_zero_fr_score() -> None:
     )
 
     assert outcome.score_darija is None
-    assert outcome.score_fr == 92
+    assert outcome.score_fr == 90
     # Darija missing → cannot claim ready (Darija = source-of-truth).
     assert outcome.ready_to_publish is False
     # But proofread_at is set because at least one score landed.
@@ -212,7 +323,7 @@ async def test_both_failures_leave_proofread_at_none() -> None:
     """Critical: with no score at all, the upsert path must not clobber existing scores."""
     pr = MagicMock()
     pr.proofread = AsyncMock(side_effect=[RuntimeError("dr"), RuntimeError("fr")])
-    proc = _fake_processor(proofreader=pr, threshold=85)
+    proc = _fake_processor(proofreader=pr, threshold=80, naturalness_floor=75)
 
     outcome = await proc._proofread_or_skip(
         raw_article_id=1,
@@ -223,4 +334,4 @@ async def test_both_failures_leave_proofread_at_none() -> None:
     assert outcome.score_darija is None
     assert outcome.score_fr is None
     assert outcome.ready_to_publish is False
-    assert outcome.proofread_at is None  # ← contract for _persist_draft upsert branch
+    assert outcome.proofread_at is None  # contract for _persist_draft upsert branch

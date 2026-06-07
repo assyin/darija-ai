@@ -33,8 +33,17 @@ from app.services.ai.pricing import compute_cost
 
 logger = get_logger("services.ai.proofreader")
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v4"
 CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 h
+
+# Weighted-aggregation parameters (v3 aggregation, paired with v4 prompt).
+# Naturalness has been the bottleneck dimension across every audit we ran;
+# weighting it heaviest means a Localizer change that lifts naturalness moves
+# the headline score the most. Sum of weights == 1.0; integer result.
+_NATURALNESS_WEIGHT = 0.40
+_CLARITY_WEIGHT = 0.25
+_CONSISTENCY_WEIGHT = 0.20
+_GRAMMAR_WEIGHT = 0.15
 
 _VALID_SEVERITIES: set[Severity] = {"low", "medium", "high"}
 _VALID_CATEGORIES: set[Category] = {"grammar", "naturalness", "clarity", "consistency"}
@@ -48,40 +57,112 @@ def _system_prompt(lang: Language, field: Field_) -> str:
     inputs (titles can't be evaluated like full bodies).
     """
     common_rules = (
-        "Evaluate FOUR DIMENSIONS INDEPENDENTLY, on 0-100 each. Be PRECISE, not "
-        "generous. Distinguish 82 from 88. Do NOT anchor to a 'publishable' "
-        "threshold — the threshold is computed downstream.\n\n"
-        "Calibration (apply per dimension):\n"
-        "  • 90-100 = excellent, professional editor would not change anything.\n"
-        "  • 80-89 = strong, only cosmetic polish would improve it.\n"
-        "  • 70-79 = solid but has at least 2-3 concrete issues that the editor "
-        "should fix before publishing.\n"
-        "  • 60-69 = noticeable issues; needs a thorough pass.\n"
-        "  • 50-59 = weak; multiple paragraphs need rework.\n"
-        "  • <50 = poor; rewrite from scratch.\n\n"
-        "Sub-scores (be specific, do not copy values across dimensions):\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "ANTI-ANCHORING — read this BEFORE evaluating\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        "Past evaluators of this corpus collapsed every article into the SAME\n"
+        "score template (grammar=85, naturalness=75, clarity=80, consistency=80).\n"
+        "That template is the WORST possible output — it tells the editor\n"
+        "nothing about which articles to publish first. Your evaluation has\n"
+        "FAILED its purpose if your four sub-scores cluster in a single\n"
+        "5-point band for every article.\n\n"
+        "You MUST satisfy these constraints or the evaluation is defective:\n\n"
+        "  R1. EXPLICIT SPREAD — at least TWO of the four sub-scores MUST\n"
+        "      differ from each other by 5+ points. The literal quadruple\n"
+        "      (85, 75, 80, 80) or (85, 75, 80, 85) is BANNED — if your\n"
+        "      honest evaluation lands there, perturb ONE sub-score by ±5\n"
+        "      based on the strongest signal in the text.\n\n"
+        "  R2. USE THE FULL 0-100 RANGE — expected corpus distribution:\n"
+        "         < 50      :  ~5%   (rewrite from scratch)\n"
+        "         50-64     : ~15%   (heavy rework)\n"
+        "         65-74     : ~30%   (rough, multiple passes needed)\n"
+        "         75-84     : ~30%   (acceptable, light edits)\n"
+        "         85-92     : ~15%   (strong, minimal polish)\n"
+        "         93+       :  ~5%   (excellent, publishable as-is)\n"
+        "      If you return 75-80 for everything, you are anchoring. Push\n"
+        "      yourself to discriminate.\n\n"
+        "  R3. EVIDENCE-DRIVEN — each sub-score MUST be tied to a SPECIFIC\n"
+        "      observation in the text. If you cannot quote the exact phrase\n"
+        "      that justifies the score, the score is invalid.\n\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "CALIBRATION ANCHORS — three Darija snippets with their scores\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        "EXCELLENT (grammar=95, naturalness=92, clarity=90, consistency=92):\n"
+        '  "OpenAI طلقات ChatGPT-5 الأسبوع لي فات. من نهار الإطلاق، الناس\n'
+        "   فالويب كيقولو بللي الموديل بان مختلف بزاف على القديم. الفرق\n"
+        '   الكبير؟ ChatGPT-5 كيفهم السياق الطويل أحسن ولا كيخلط."\n'
+        "  → Verb early. Native idioms (فالويب, بزاف, ولا). Short sentences.\n"
+        "    Zero French calque. Tech terms in Latin script.\n\n"
+        "MEDIUM (grammar=85, naturalness=72, clarity=80, consistency=78):\n"
+        '  "الشركة الفرنسية ديال AI Mistral، لي كاتعتبر واحدة من أكبر الشركات\n'
+        "   الناشئة فأوروبا والمعروفة بالموديل ديالها لي كاتسما Mistral Large،\n"
+        '   أعلنات اليوم على round ديال تمويل ضخم بمناسبة عيد السنة."\n'
+        "  → Subject 18 words before the verb (FR structure preserved).\n"
+        "    'كاتعتبر' / 'بمناسبة' are calques. Sub-scores SPREAD 13 points.\n\n"
+        "WEAK (grammar=75, naturalness=55, clarity=62, consistency=58):\n"
+        '  "في إطار التحول الرقمي ديال القطاع، الشركة قامات بإطلاق منصة جديدة\n'
+        "   كاتسمح للمستخدمين بالاستفادة من خدمات الذكاء الاصطناعي بشكل أكثر\n"
+        '   فعالية و في إطار سياسة الانفتاح على المنظومة الريادية الوطنية."\n'
+        "  → 'في إطار' (x2) literal calque. 'التحول الرقمي' / 'المنظومة\n"
+        "    الريادية' are administrative French nouns transliterated.\n"
+        "    Reads as press-release translated by a junior. Spread 20 points.\n\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "HEURISTICS for NATURALNESS (the bottleneck dimension)\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        "Start from a base of 80, then ADJUST:\n\n"
+        "  + Native Darija idioms (بحال، فاش، ملي، تما، دابا، شي، عاد)\n"
+        "      → +1 per distinct idiom, cap +5\n"
+        "  + Verb within first 5 words of the sentence\n"
+        "      → +2 if ≥80% of sentences satisfy\n"
+        "  + Tech term in Latin script (OpenAI, GPT, API)\n"
+        "      → +1 (anti-transliteration signal)\n"
+        "  + Punchy sentences (< 15 words avg)\n"
+        "      → +2\n\n"
+        "  - French connector literal ('في إطار', 'بشكل آخر', 'في الحقيقة',\n"
+        "    'بمناسبة', 'علاوة على ذلك')\n"
+        "      → -2 per occurrence\n"
+        "  - Sentence > 25 words with subordinate clauses\n"
+        "      → -3 per occurrence\n"
+        "  - Administrative French noun transliterated ('التحول الرقمي',\n"
+        "    'المنظومة الريادية', 'الإشكالية', 'الإطار التنظيمي')\n"
+        "      → -3 per occurrence\n"
+        "  - Subject longer than 7 words before verb\n"
+        "      → -1 per occurrence\n\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "SUB-SCORE DEFINITIONS\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
         "  • grammar — verb conjugation, agreement, syntax, punctuation.\n"
-        "  • naturalness — does it read like a Moroccan tech editor wrote it, "
-        "or like a translation? MSA disguised as Darija = penalty.\n"
-        "  • clarity — does each sentence convey ONE clear idea? Are technical "
-        "terms explained on first mention? Is the structure logical?\n"
-        "  • consistency — does the voice/tone stay even? Are technical terms "
-        "rendered the same way throughout? Is the audience-level stable?\n\n"
-        "Distribute the four scores honestly. It is normal for grammar to be "
-        "85 while naturalness is 72 — that is exactly the signal we want. "
-        "DO NOT collapse all four to the same number.\n\n"
-        "Top-level 'score' MUST be the MINIMUM of the four sub-scores — the "
-        "worst dimension dominates. (Server will recompute and reject the "
-        "response if min(sub-scores) ≠ score.)\n\n"
-        "Suggestions: max 8, highest-impact first. Each suggestion's "
-        "'original' MUST be an EXACT contiguous substring copy-pasted "
-        "character-for-character from the input — INCLUDING Arabic-Indic "
-        "digits (٠١٢٣٤٥٦٧٨٩) vs Latin digits (0123456789), punctuation, "
-        "white-space, line breaks, and any inline markup like <bdi>…</bdi>. "
-        "Do NOT paraphrase, normalize, translate, or shorten. If you cannot "
-        "find an exact substring that needs fixing, skip the suggestion. "
-        "'suggestion' is the proposed replacement (may be empty to indicate "
-        "deletion). 'reason' is ONE short sentence in French."
+        "    Most articles land 75-90 because the generator is competent.\n"
+        "    Reserve <70 for visibly broken grammar.\n"
+        "  • naturalness — does it read like a Moroccan tech editor wrote\n"
+        "    it, or like a translation? MSA disguised as Darija = penalty.\n"
+        "    Apply the heuristics above.\n"
+        "  • clarity — does each paragraph convey ONE clear idea? Are\n"
+        "    technical terms explained on first mention? Is the structure\n"
+        "    pyramid-shaped (key info first)?\n"
+        "  • consistency — does voice/tone stay even? Are technical terms\n"
+        "    rendered the same way throughout (Claude vs كلود)? Is the\n"
+        "    audience level stable?\n\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "SCORE FIELD (informational only — server overrides)\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        "The top-level 'score' you return is informational; the server\n"
+        "computes the final headline score from your four sub-scores via a\n"
+        "naturalness-weighted average (40% nat, 25% clar, 20% consist,\n"
+        "15% gram). Report it anyway for schema compatibility — just be\n"
+        "honest about each sub-score and the aggregation will follow.\n\n"
+        "═══════════════════════════════════════════════════════════════════\n"
+        "SUGGESTIONS\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        "Max 8, highest-impact first. Each suggestion's 'original' MUST be\n"
+        "an EXACT contiguous substring copy-pasted character-for-character\n"
+        "from the input — INCLUDING Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) vs\n"
+        "Latin digits (0123456789), punctuation, white-space, line breaks,\n"
+        "and any inline markup like <bdi>…</bdi>. Do NOT paraphrase,\n"
+        "normalize, translate, or shorten. If you cannot find an exact\n"
+        "substring that needs fixing, skip the suggestion. 'suggestion' is\n"
+        "the proposed replacement (may be empty for deletion). 'reason' is\n"
+        "ONE short sentence in French."
     )
 
     if lang == "darija":
@@ -355,20 +436,37 @@ class Proofreader:
         model_score = _clamp(parsed.get("score"))
         summary = str(parsed.get("summary", ""))
 
-        # Server is the source of truth for the top-level score: take the
-        # MIN of the populated sub-scores. If none arrived (degenerate v1
-        # response), fall back to whatever the model returned.
-        sub_scores = [s for s in (grammar, naturalness, clarity, consistency) if s is not None]
-        if sub_scores:
-            score = min(sub_scores)
+        # Server is the source of truth for the top-level score. v4 uses a
+        # naturalness-weighted average instead of the v2 MIN rule. The MIN
+        # rule turned out to be the source of the 85/75/80/80 anchor we
+        # diagnosed at length — see docs/DECISIONS.md ADR-005 and the
+        # session sandbox runs in 2026-06-07.
+        #
+        # When all four sub-scores are present, score = weighted average.
+        # When a legacy v1/v2 cached entry comes back with no sub-scores,
+        # fall back to the model-reported top-level. When nothing is
+        # parseable, fall back to 0 to avoid crashing.
+        if (
+            grammar is not None
+            and naturalness is not None
+            and clarity is not None
+            and consistency is not None
+        ):
+            weighted = (
+                _GRAMMAR_WEIGHT * grammar
+                + _NATURALNESS_WEIGHT * naturalness
+                + _CLARITY_WEIGHT * clarity
+                + _CONSISTENCY_WEIGHT * consistency
+            )
+            score = round(weighted)
         elif model_score is not None:
             score = model_score
         else:
             score = 0
 
-        if model_score is not None and sub_scores and model_score != score:
-            logger.warning(
-                "proofreader.score_corrected",
+        if model_score is not None and model_score != score:
+            logger.info(
+                "proofreader.score_recomputed",
                 model=self._model,
                 lang=lang,
                 field=field,
