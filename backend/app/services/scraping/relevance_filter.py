@@ -1,29 +1,53 @@
-"""Decide whether a raw article is AI-relevant enough to enter the pipeline.
+"""Decide whether a raw article is tech-relevant enough to enter the pipeline.
 
-Why the keyword soup: TitritAI ingests from sources that cover MUCH more than
-AI (Médias24, Le Devoir, Frenchweb) — relying on the source alone would push
-every politics or weather story into Claude. The relevance filter is the first
-cheap gate before we spend $0.002+ on a Localizer call.
+Why this gate exists: TitritAI ingests from sources that cover MUCH more than
+tech (Médias24, Le Devoir, Frenchweb, La Presse, Swiss/Quebec general news) —
+relying on the source alone pushes every politics / weather / sports story into
+Claude. This filter is the FIRST cheap gate, before we spend a single Localizer
+call (~$0.04 of mostly-input tokens). Articles rejected here are never stored
+and never reach Claude.
+
+Editorial scope is **tech-large** (validated 2026-06-11 against the published
+corpus): AI, but also startups, fintech, hardware, gaming, consumer tech,
+infrastructure and tech-business. Strictly-AI-only would filter content the
+newsroom actually publishes (Uber/Careem, GoPro, OLED TVs, EVs…).
+
+Matching rules (V8, validated by production replay — see
+``tests/.../test_relevance_filter.py::test_offline_corpus_reproduces_measured``):
+
+  block (return ``(False, reason)``) if:
+      NOT( tech keyword in TITLE  OR  >= 2 tech hits in title+body )   # "no_tech_signal"
+    OR
+      len(content) < 400 chars                                        # "too_short"
+
+The keyword check runs FIRST so off-topic articles return ``no_tech_signal``
+(not eligible for HTML enrichment), while a genuinely-tech-but-short excerpt
+returns ``too_short`` and the ingestion path may enrich it then re-test.
+
+Critical correctness note — WORD BOUNDARIES:
+  The previous version matched keywords as bare substrings. The 2-letter token
+  "ai" is a substring of common French words (m**ai**s, m**ai**son, fr**ai**s,
+  tr**ai**l, j**ai**, **ai**r, fran**çai**s→francais) so 96% of the corpus
+  "matched" and the gate was a no-op for French — every off-topic article
+  reached Claude and was rejected there at full input cost. All short Latin
+  tokens are now word-boundary anchored. See the regression test
+  ``test_ai_substring_in_mais_does_not_match``.
 
 Three keyword families:
-
-  - **Accent-insensitive (FR + EN)**: matched against an NFKD-normalized,
-    diacritic-stripped lower-cased haystack so "Intelligence Artificielle",
-    "intelligence artificielle" and "INTÉLLIGENCE ARTIFICIELLE" all match
-    the same canonical entry "intelligence artificielle".
-  - **Arabic**: matched against the original (lower-cased) haystack — Arabic
-    has its own diacritics (tashkīl) but they're rare in news prose, and
-    lowercase is a no-op for Arabic letters, so a literal substring match
-    is reliable.
-  - **Brand/program names**: companies and initiatives whose mere mention
-    almost always implies an AI angle in TitritAI's editorial scope
-    (Mila, Yoshua Bengio, French Tech, Bpifrance, InstaDeep, Yassir AI lab,
-    Tabby, Anghami, etc.). These ride in the accent-insensitive set.
+  - Latin (FR + EN): matched against an NFKD-normalized, diacritic-stripped,
+    lower-cased haystack so "Intelligence Artificielle" and "intelligence
+    artificielle" hit the same canonical entry. Single-word tokens are
+    word-boundary anchored; multi-word / hyphenated phrases are specific
+    enough to match literally.
+  - Arabic: matched as a literal substring against the raw lower-cased
+    haystack (Arabic has no "ai"-style short-token collision, and lowercase
+    is a no-op for Arabic letters).
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import unicodedata
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -31,109 +55,97 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 def _strip_accents(s: str) -> str:
     """Lower-case + NFKD-strip combining diacritics.
 
-    "Génération" → "generation", "État" → "etat", "Sénégal" → "senegal".
-    Arabic letters survive unchanged because their combining marks
-    (tashkīl) are stripped too — which is what we want, news rarely
-    uses tashkīl and removing it canonicalises any stray marks.
+    "Génération" → "generation", "État" → "etat", "français" → "francais".
+    Arabic letters survive unchanged (their tashkīl marks are stripped too,
+    which is what we want — news prose rarely carries tashkīl).
     """
     decomposed = unicodedata.normalize("NFKD", s.lower())
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
 # ---------------------------------------------------------------------------
-# Accent-insensitive keywords — matched against _strip_accents(haystack).
-# Always store the post-strip form (no accents) so the lookup is symmetric.
+# Latin tech lexicon (tech-large scope). Stored in accent-stripped lower form
+# so the lookup against _strip_accents(haystack) is symmetric.
+#
+# _SHORT_TOKENS  — single words that are SHORT or ambiguous; word-boundary
+#                  anchored so "ai" never matches "mais". Includes the legacy
+#                  AI/brand tokens that are real words elsewhere.
+# _PHRASE_TOKENS — multi-word, hyphenated, or otherwise specific patterns;
+#                  matched literally (their length/structure prevents the
+#                  substring collisions that plague 2-3 letter tokens).
 # ---------------------------------------------------------------------------
-_AI_KEYWORDS_LATIN: frozenset[str] = frozenset(
-    {
-        # --- English (existing v1 set, preserved) ---
-        "ai",
-        "a.i.",
-        "artificial intelligence",
-        "llm",
-        "language model",
-        "machine learning",
-        "ml ",
-        "deep learning",
-        "neural network",
-        "neural net",
-        "openai",
-        "anthropic",
-        "claude",
-        "gpt",
-        "chatgpt",
-        "gemini",
-        "mistral",
-        "llama",
-        "huggingface",
-        "hugging face",
-        "transformer",
-        "diffusion model",
-        "agent",
-        "agentic",
-        "rag ",
-        "fine-tuning",
-        "fine tuning",
-        "embedding",
-        "stable diffusion",
-        "midjourney",
-        "dall-e",
-        "dalle",
-        # --- French (accent-stripped canonical forms) ---
-        "intelligence artificielle",  # IA in nearly every FR newsroom
-        " ia ",  # standalone token, padded to avoid matching e.g. "italie"
-        " ia.",
-        " ia,",
-        "ia generative",  # "IA générative"
-        "ia agentique",  # "IA agentique"
-        "ia conversationnelle",
-        "apprentissage automatique",
-        "apprentissage profond",
-        "modele de langage",  # "modèle de langage"
-        "grands modeles de langage",  # "grands modèles de langage"
-        "reseau de neurones",  # "réseau de neurones"
-        "agent conversationnel",
-        "agent intelligent",
-        "vision par ordinateur",
-        "traitement du langage naturel",
-        "tln",  # TLN abbreviation
-        "generative ai",  # bilingual coverage
-        # --- Brands + ecosystem signals (FR / EN / MENA) ---
-        # MENA/Morocco AI-adjacent companies & initiatives.
-        "instadeep",  # Tunisian AI unicorn (BioNTech acquisition).
-        "yassir",  # Algerian/Maghreb super-app, AI-driven logistics.
-        "tabby",  # KSA fintech, ML-based credit scoring.
-        "tamara",  # KSA fintech, same.
-        "anghami",  # MENA Spotify, ML recommendations.
-        "careem",  # MENA Uber, AI dispatch.
-        "chari",  # Moroccan B2B marketplace.
-        "onecart",  # Moroccan logistics.
-        "digital morocco 2030",
-        "maroc digital 2030",
-        # Francophonie ecosystem.
-        "mila",  # Montreal Institute for Learning Algorithms.
-        "yoshua bengio",  # Mila founder, AI godfather.
-        "vector institute",  # Toronto AI hub (Hinton-era).
-        "ivado",  # Quebec AI institute, IVADO.
-        "scale ai canada",  # Canadian AI ecosystem org.
-        "element ai",  # Quebec AI scale-up (ServiceNow acq).
-        "french tech",  # FR ecosystem brand.
-        "la french tech",
-        "bpifrance",  # State-owned French Tech funder.
-        "station f",  # FR startup campus.
-        # "hugging face" and "mistral" already listed in the EN section above.
-        # Pan-African + EU policy signals.
-        "smart africa",  # Pan-African digital initiative.
-        "africa tech",
-        "ai act",  # EU AI Act, often cited as "AI Act" in FR press.
-        "loi sur l'ia",  # FR rendering of the AI Act.
-        "loi sur l ia",  # accent-stripped of the apostrophe-less form.
-    }
+
+# Single-word tokens — emitted inside a single \b(?:...)\b group.
+_WORD_TOKENS: tuple[str, ...] = (
+    # AI / ML core
+    "ai", "ia", "llm", "gpt", "chatgpt", "openai", "anthropic", "claude",
+    "gemini", "copilot", "chatbot", "neural", "transformer", "inference",
+    "pretrain", "embedding", "embeddings", "dataset", "benchmark", "pytorch",
+    "tensorflow", "generative", "generatif", "deepfake",
+    "prompt", "agentic", "algorithm", "algorithme", "nlp", "tln", "rag",
+    "mistral", "llama", "midjourney", "dalle",
+    # Compute / dev / infra
+    "software", "logiciel", "hardware", "startup", "blockchain", "crypto",
+    "bitcoin", "web3", "semiconductor", "nvidia", "smartphone", "iphone",
+    "android", "cyber", "cybersecurite", "quantum", "informatique",
+    "metaverse", "metavers", "fintech", "developer", "developpeur",
+    "developpement", "programming", "programmation", "kubernetes", "docker",
+    "devops", "robot", "robotique", "datacenter", "processeur", "microchip",
+    "chipset", "gpu", "cpu", "tpu", "api", "amd", "ibm", "intel",
+    # Consumer tech / hardware / gaming
+    "autonome", "autonomous", "driverless", "oled", "esport", "gaming",
+    "console", "ecouteurs", "earbuds", "headphone", "wearable", "streaming",
+    # Tech brands (low off-topic collision)
+    "google", "microsoft", "apple", "meta", "amazon", "tesla", "spacex",
+    "samsung", "huawei", "qualcomm", "uber", "tiktok", "spotify", "netflix",
+    "oracle",
+    # MENA / Francophonie ecosystem (legacy set — preserved)
+    "instadeep", "yassir", "tabby", "tamara", "anghami", "careem", "chari",
+    "onecart", "mila", "ivado", "bpifrance",
+)
+
+# Multi-word / hyphenated / pattern tokens — matched literally (no \b group).
+_PHRASE_TOKENS: tuple[str, ...] = (
+    "artificial intelligence", "intelligence artificielle", "machine learning",
+    "deep learning", "language model", "modele de langage",
+    "reseau de neurones", "vision par ordinateur",
+    "traitement du langage naturel", "fine-tun", "fine tuning",
+    "pre-entra", "hugging face", "huggingface", "stable diffusion",
+    "diffusion model", "dall-e", "start-up", "open-source", "open source",
+    "data center", "realite virtuelle", "vehicule electrique",
+    "voiture autonome", "semi-conducteur", "self-driving", "mini-led",
+    "e-sport", "jeu video", "jeux video", "ia generative", "ia agentique",
+    "ia conversationnelle", "generative ai", "agent conversationnel",
+    "yoshua bengio", "vector institute", "scale ai", "element ai",
+    "french tech", "station f", "smart africa", "africa tech", "ai act",
+    "loi sur l ia", "digital morocco", "maroc digital",
+)
+
+# Funding / venture signals — strong tech-news markers, matched as regex.
+_PATTERN_TOKENS: tuple[str, ...] = (
+    r"raises? \$",        # "raises $1.5 million"
+    r"leve [0-9]",        # "lève 400 millions" (accent-stripped)
+    r"levee de fonds",
+    r"venture",
 )
 
 
+def _build_tech_regex() -> re.Pattern[str]:
+    # Longest-first so a token never shadows a longer one sharing its prefix.
+    words = sorted(set(_WORD_TOKENS), key=len, reverse=True)
+    phrases = sorted(set(_PHRASE_TOKENS), key=len, reverse=True)
+    word_group = r"\b(?:" + "|".join(words) + r")\b"
+    phrase_group = "|".join(re.escape(p) for p in phrases)
+    pattern_group = "|".join(_PATTERN_TOKENS)
+    combined = f"(?:{word_group})|(?:{phrase_group})|(?:{pattern_group})"
+    return re.compile(combined, re.IGNORECASE)
+
+
+_TECH_RE: re.Pattern[str] = _build_tech_regex()
+
+
 # ---------------------------------------------------------------------------
-# Arabic keywords — matched against the raw lowercased haystack.
+# Arabic keywords — matched as substrings against the raw lower-cased haystack.
 # ---------------------------------------------------------------------------
 _AI_KEYWORDS_ARABIC: frozenset[str] = frozenset(
     {
@@ -150,42 +162,49 @@ _AI_KEYWORDS_ARABIC: frozenset[str] = frozenset(
         "الذكاء الاصطناعي التوليدي",
         "وكلاء الذكاء",
         "روبوت محادثة",
+        "تقني",  # technical / technology (covers تقني + تقنية)
+        "تكنولوجيا",
+        "حاسوب",
+        "برمجة",
     }
 )
 
-
-# Modern RSS feeds (TechCrunch, HuggingFace blog, etc.) only carry a short
-# excerpt in the feed body — the full article lives on the source website.
-# 80 words is a balance between letting these excerpts through and keeping a
-# minimum quality threshold to limit hallucination risk in the localizer.
-# A future enrichment step (fetch + readability on the URL) can raise this
-# back up once we extract full HTML.
-MIN_WORD_COUNT = 80
+# V8 thresholds (validated 2026-06-11).
+MIN_CONTENT_CHARS = 400  # below this, an article is a stub — reject (enrichable).
+MIN_BODY_HITS = 2  # tech hits required in title+body when the title alone is not tech.
 
 _TRACKING_PARAM_PREFIXES = ("utm_",)
 _TRACKING_PARAM_NAMES = frozenset({"ref", "fbclid", "gclid", "mc_cid", "mc_eid"})
 
 
+def _arabic_hits(raw_lower: str) -> int:
+    # Count occurrences (not distinct keywords) so an Arabic body that repeats
+    # one AI phrase contributes to the density gate like the Latin findall path.
+    return sum(raw_lower.count(kw) for kw in _AI_KEYWORDS_ARABIC)
+
+
 def is_relevant(title: str, content: str) -> tuple[bool, str | None]:
     """Return (passes, rejection_reason) for a fetched article.
 
-    First filter we apply on the ingestion path — runs before any AI call.
-    Caller passes the raw title + body text (RSS excerpt or enriched HTML);
-    we look at the title plus the first 500 chars of body, which is where
-    the topic signal almost always lives.
+    First filter on the ingestion path — runs before any AI call and before
+    the article is stored. The keyword gate is evaluated first so off-topic
+    articles return ``"no_tech_signal"`` (not enrichment-eligible); a
+    genuinely tech-but-short body returns ``"too_short"`` and the ingestion
+    path may enrich + re-test it.
     """
-    raw = f"{title} {content[:500]}"
-    raw_lower = raw.lower()
-    canonical = _strip_accents(raw)  # lowercased + accent-stripped
+    title_canon = _strip_accents(title)
+    full_canon = _strip_accents(f"{title} {content}")
+    raw_lower = f"{title} {content}".lower()
 
-    matched = any(kw in canonical for kw in _AI_KEYWORDS_LATIN) or any(
-        kw in raw_lower for kw in _AI_KEYWORDS_ARABIC
+    title_tech = _TECH_RE.search(title_canon) is not None or any(
+        kw in title.lower() for kw in _AI_KEYWORDS_ARABIC
     )
-    if not matched:
-        return False, "no_ai_keywords"
+    hits = len(_TECH_RE.findall(full_canon)) + _arabic_hits(raw_lower)
 
-    word_count = len(content.split())
-    if word_count < MIN_WORD_COUNT:
+    if not (title_tech or hits >= MIN_BODY_HITS):
+        return False, "no_tech_signal"
+
+    if len(content) < MIN_CONTENT_CHARS:
         return False, "too_short"
 
     return True, None
