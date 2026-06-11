@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # CLAUDE.md §1: $50/month infra cap; §5: $5/day Sentry alert threshold.
     ai_monthly_cap_usd: float = 50.0
     ai_spend_daily_threshold_usd: float = 5.0
+    # HARD circuit-breaker cap — distinct from the soft alert threshold above.
+    # When today's Claude spend crosses this, `SpendGuard` trips a Redis flag
+    # that PAUSES all AI processing until manually cleared (no auto-resume).
+    # Kept low for controlled observation windows; raise for normal operation.
+    # See app/services/ai/spend_guard.py.
+    ai_spend_daily_hard_cap_usd: float = 2.0
 
     # Auto-flag mode for the editorial AI proofreader. When the pipeline runs
     # the Proofreader on a new draft, an article is flagged "ready to publish"

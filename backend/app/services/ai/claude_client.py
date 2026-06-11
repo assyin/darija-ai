@@ -62,6 +62,16 @@ def _is_billing_error(message: str) -> bool:
     return any(pattern in lowered for pattern in _BILLING_ERROR_PATTERNS)
 
 
+def is_billing_error(message: str) -> bool:
+    """Public wrapper around :func:`_is_billing_error`.
+
+    Lets callers outside this module (e.g. the worker's spend circuit breaker)
+    classify a wrapped ``ExternalServiceError`` as an operational billing/quota
+    outage without re-implementing the pattern list.
+    """
+    return _is_billing_error(message)
+
+
 class ClaudeClient:
     DEFAULT_MODEL = "claude-haiku-4-5"
 
