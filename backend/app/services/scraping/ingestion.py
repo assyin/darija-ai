@@ -131,7 +131,7 @@ class IngestionService:
         relevant, reason = is_relevant(item.title, content)
 
         # Enrichment fallback: only when the RSS body is too short. Items
-        # rejected for "no_ai_keywords" stay rejected (different problem —
+        # rejected for "no_tech_signal" stay rejected (different problem —
         # they're off-topic, not under-detailed).
         if not relevant and reason == "too_short" and self._enricher is not None:
             original_words = len(content.split())

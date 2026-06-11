@@ -454,6 +454,7 @@ async def _proofread_one_article(
                 text=article.content_darija,
                 lang="darija",
                 field="body",
+                raw_article_id=article.raw_article_id,
             )
             score_darija = result.score
             nat_darija = result.naturalness_score
@@ -473,6 +474,7 @@ async def _proofread_one_article(
                     text=article.content_fr,
                     lang="french",
                     field="body",
+                    raw_article_id=article.raw_article_id,
                 )
                 score_fr = result_fr.score
                 nat_fr = result_fr.naturalness_score
@@ -626,6 +628,7 @@ async def proofread_article_field(
             text=payload.text,
             lang=payload.lang,
             field=payload.field,
+            raw_article_id=article.raw_article_id,
         )
 
     # Persist body scores so the admin list cards stay in sync with the

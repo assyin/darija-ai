@@ -310,6 +310,7 @@ class Proofreader:
         text: str,
         lang: Language,
         field: Field_,
+        raw_article_id: int | None = None,
     ) -> ProofreadResult:
         key = _cache_key(self._model, lang, field, text)
         cached_raw = await self._redis.get(key)
@@ -365,6 +366,7 @@ class Proofreader:
                 model=self._model,
                 success=False,
                 cost_usd=Decimal("0"),
+                raw_article_id=raw_article_id,
                 error=str(exc),
             )
             raise ExternalServiceError(
@@ -386,6 +388,7 @@ class Proofreader:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             duration_ms=duration_ms,
+            raw_article_id=raw_article_id,
         )
         content = response.choices[0].message.content if response.choices else None
         if not content:

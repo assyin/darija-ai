@@ -1,189 +1,235 @@
-"""Tests for the multilingual relevance filter.
+"""Tests for the tech-relevance pre-filter (V8).
 
-These pin the new contract introduced with the MENA + Francophonie sources
-rollout: the filter must accept FR-language AI coverage from Frenchweb /
-Maddyness / Le Devoir, Arabic coverage from Asharq Al-Awsat / Médias24 ar,
-and brand-only mentions (Mila, Yassir, InstaDeep) without needing the
-literal string "ai" / "intelligence artificielle" to appear.
+Three concerns are pinned here:
 
-Each test states what it's defending, so a future change that breaks
-the contract is easy to read in the diff.
+1. **Regression** — the bare-substring "ai" bug. Before V8, "ai" matched as a
+   substring of common French words (mais, maison, français…), making the gate
+   a no-op for French: 96% of the corpus passed and every off-topic article
+   reached Claude. The boundary-anchored matcher must NOT match those.
+2. **Contract** — the V8 rule: block unless (tech kw in title) OR (>= 2 tech
+   hits in title+body); plus a 400-char floor (enrichment-eligible).
+3. **Production parity** — an offline replay over the real labeled corpus
+   (141 JUNK rejected by the Localizer, 219 GOOD that produced articles)
+   reproduces the measured block rates, so the code matches the simulation.
+
+Each test states what it defends so a contract change is obvious in the diff.
 """
 
 from __future__ import annotations
 
+import gzip
+import json
+from pathlib import Path
+
 import pytest
 
 from app.services.scraping.relevance_filter import (
-    MIN_WORD_COUNT,
+    MIN_BODY_HITS,
+    MIN_CONTENT_CHARS,
     is_relevant,
     normalize_url,
     url_hash,
 )
 
-# A canned body long enough to clear MIN_WORD_COUNT (80 words). Tests append
-# their own topic-bearing prefix to it so we test the topic gate, not length.
-_PADDING = " ".join(["lorem", "ipsum", "dolor", "sit", "amet"] * 20)  # 100 words
+# Neutral filler with NO tech tokens and NO "ai" substring — long enough to
+# clear the 400-char floor so tests exercise the topic gate, not the length gate.
+_PAD = "lorem ipsum dolor sit amet consectetur " * 15  # ~585 chars
 
 
-# -----------------------------------------------------------------------------
-# English (regression — must still pass after the v2 expansion)
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 1. REGRESSION — the "ai" substring bug must stay dead
+# ---------------------------------------------------------------------------
 
 
-def test_english_artificial_intelligence_phrase_passes() -> None:
-    """Baseline: the legacy v1 keyword set still matches."""
-    ok, reason = is_relevant("Why artificial intelligence matters", _PADDING)
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Le maire de Montréal présente son budget",  # "maire" contains 'ai'
+        "Jamais deux sans trois pour les Canadiens",  # "jamais"
+        "La maison de la culture rouvre ses portes",  # "maison"
+        "Le parti français débat de la nouvelle loi",  # "français"
+        "Le travail parlementaire reprend en septembre",  # "travail"
+        "Pour quelle raison le conseil a-t-il voté ainsi",  # "raison"
+        "Un air de fête flotte sur la vieille ville",  # "air"
+    ],
+)
+def test_ai_substring_in_common_french_words_does_not_match(title: str) -> None:
+    """The 2-letter token 'ai' must be word-bounded — never match mais/français/etc.
+
+    This is THE regression guard for the no-op bug that let every off-topic
+    French article reach Claude at full input cost.
+    """
+    ok, reason = is_relevant(title, "Un article de politique locale. " + _PAD)
+    assert ok is False, f"{title!r} wrongly classified tech"
+    assert reason == "no_tech_signal"
+
+
+# ---------------------------------------------------------------------------
+# 2. CONTRACT — the V8 rule
+# ---------------------------------------------------------------------------
+
+
+def test_tech_keyword_in_title_passes_regardless_of_density() -> None:
+    """A tech keyword in the TITLE passes even with a thin body."""
+    ok, reason = is_relevant("OpenAI dévoile GPT-5", "Une annonce courte. " + _PAD)
     assert ok is True
     assert reason is None
 
 
-def test_english_brand_only_passes() -> None:
-    """An article naming Claude/OpenAI without the literal "AI" still passes."""
-    ok, _ = is_relevant("Claude beats benchmarks", _PADDING)
-    assert ok is True
-
-
-# -----------------------------------------------------------------------------
-# French — accent-insensitive matching is the central new contract
-# -----------------------------------------------------------------------------
-
-
-def test_french_intelligence_artificielle_passes() -> None:
-    """Canonical FR phrase — the most common signal in Frenchweb / Maddyness."""
-    ok, _ = is_relevant("L'intelligence artificielle transforme la pub", _PADDING)
-    assert ok is True
-
-
-def test_french_capitalised_with_accents_passes() -> None:
-    """A title with capitals + accents must canonicalise to the same key."""
-    # "INTÉLLIGENCE ARTIFICIELLE" → lowered + NFKD-stripped =
-    # "intelligence artificielle"
-    ok, _ = is_relevant("INTÉLLIGENCE ARTIFICIELLE AU SERVICE DE LA SANTÉ", _PADDING)
-    assert ok is True
-
-
-def test_french_ia_generative_passes() -> None:
-    """Accent-bearing phrase IA générative becomes 'ia generative'."""
-    ok, _ = is_relevant("L'IA générative bouleverse le marketing", _PADDING)
-    assert ok is True
-
-
-def test_french_modele_de_langage_passes() -> None:
-    """`modèle de langage` (FR for LLM) — accent on è must not block."""
-    ok, _ = is_relevant("Le nouveau modèle de langage de Mistral", _PADDING)
-    assert ok is True
-
-
-def test_french_standalone_ia_token_passes_with_padding() -> None:
-    """Standalone "IA" inside the title — must be padded to avoid 'Italie' etc."""
-    # Real Maddyness headline pattern: "L' IA en 2026" → contains " ia "
-    ok, _ = is_relevant("Sommet IA Paris : ce qu'il faut retenir", _PADDING)
-    assert ok is True
-
-
-def test_french_italie_does_not_match_ia_token() -> None:
-    """Defensive: "Italie" must NOT match the padded " ia " token."""
-    # No other AI keyword present → must reject.
-    ok, reason = is_relevant("L'Italie signe un accord économique", _PADDING)
+def test_single_body_keyword_is_insufficient() -> None:
+    """Non-tech title + ONE body hit → rejected (density < 2). Deliberate V8 hardening."""
+    body = "Le marché évolue. La blockchain est citée une fois. " + _PAD
+    ok, reason = is_relevant("Le secteur traverse une mutation", body)
     assert ok is False
-    assert reason == "no_ai_keywords"
+    assert reason == "no_tech_signal"
 
 
-# -----------------------------------------------------------------------------
-# Arabic — Asharq Al-Awsat / Medias24 ar coverage
-# -----------------------------------------------------------------------------
-
-
-def test_arabic_ai_phrase_passes() -> None:
-    """`ذكاء اصطناعي` in the title — most common MSA signal."""
-    # Pad with neutral Arabic so we clear MIN_WORD_COUNT and don't fall back
-    # on counting Latin lorem-ipsum words.
-    arabic_body = "مرحبا " * 90
-    ok, _ = is_relevant("ذكاء اصطناعي يغير الصناعة", arabic_body)
+def test_two_body_keywords_pass() -> None:
+    """Non-tech title + TWO tech hits in the body → passes."""
+    body = "La startup mise sur la blockchain pour grandir. " + _PAD
+    ok, reason = is_relevant("Une jeune pousse en pleine croissance", body)
     assert ok is True
+    assert reason is None
 
 
-def test_arabic_with_definite_article_passes() -> None:
-    """`الذكاء الاصطناعي` (with definite article) — same concept, different morphology."""
-    arabic_body = "نص طويل " * 50
-    ok, _ = is_relevant("الذكاء الاصطناعي والمستقبل", arabic_body)
-    assert ok is True
+def test_density_threshold_constant_is_two() -> None:
+    """Guard the documented threshold so a silent change is caught."""
+    assert MIN_BODY_HITS == 2
 
 
-# -----------------------------------------------------------------------------
-# Brand + ecosystem signals — MENA, Francophonie, Quebec
-# -----------------------------------------------------------------------------
-
-
-def test_mila_montreal_passes() -> None:
-    """Quebec AI institute — every mention is AI-relevant for our scope."""
-    ok, _ = is_relevant("Mila lance un nouveau programme de recherche", _PADDING)
-    assert ok is True
-
-
-def test_yoshua_bengio_passes() -> None:
-    """Founder-of-Mila signal."""
-    ok, _ = is_relevant("Yoshua Bengio signe une tribune sur la sûreté", _PADDING)
-    assert ok is True
-
-
-def test_french_tech_signal_passes() -> None:
-    """`French Tech` ecosystem mention — AI-adjacent enough for our editorial scope."""
-    ok, _ = is_relevant("La French Tech lève 1 milliard cette semaine", _PADDING)
-    assert ok is True
-
-
-def test_instadeep_passes() -> None:
-    """Tunisian AI unicorn (BioNTech acquired)."""
-    ok, _ = is_relevant("InstaDeep ouvre un bureau au Caire", _PADDING)
-    assert ok is True
-
-
-def test_yassir_passes() -> None:
-    """Maghreb super-app driven by ML for routing/dispatch."""
-    ok, _ = is_relevant("Yassir lève 100 millions pour son IA logistique", _PADDING)
-    assert ok is True
-
-
-# -----------------------------------------------------------------------------
-# Threshold + rejection paths (regression — unchanged behaviour)
-# -----------------------------------------------------------------------------
-
-
-def test_word_count_threshold_still_rejects_short_articles() -> None:
-    """A keyword hit but a too-short body — must still reject."""
-    ok, reason = is_relevant("Intelligence artificielle révolutionne tout", "court.")
+def test_short_tech_article_is_too_short_not_offtopic() -> None:
+    """A tech-but-short body returns 'too_short' so ingestion can enrich + re-test."""
+    ok, reason = is_relevant("Startup IA marocaine en vue", "Brève.")
     assert ok is False
     assert reason == "too_short"
 
 
-def test_word_count_boundary_is_inclusive_above() -> None:
-    """Exactly MIN_WORD_COUNT + 1 words → accepted (sanity check on the gate)."""
-    body = " ".join(["mot"] * (MIN_WORD_COUNT + 1))
-    ok, _ = is_relevant("IA générative en entreprise", body)
-    assert ok is True
+def test_offtopic_short_article_is_no_tech_signal_not_too_short() -> None:
+    """Off-topic short body returns 'no_tech_signal' (NOT enrichment-eligible).
 
-
-def test_completely_unrelated_article_rejected() -> None:
-    """Weather report → no AI keyword, no brand → reject cleanly."""
-    ok, reason = is_relevant("Météo : pluie attendue à Casablanca", _PADDING)
+    Keyword gate runs before the length gate: we don't waste an enrichment
+    fetch on an article that has no tech signal in the first place.
+    """
+    ok, reason = is_relevant("Le maire vote le budget municipal", "Brève.")
     assert ok is False
-    assert reason == "no_ai_keywords"
+    assert reason == "no_tech_signal"
 
 
-def test_keyword_in_body_alone_still_passes() -> None:
-    """Topic might surface only in the body (first 500 chars are scanned)."""
-    body = "Le secteur traverse une mutation. " + "lorem ipsum dolor sit amet " * 5
-    body += " La nouvelle vague d'IA générative pousse les acteurs à investir."
-    body += " " + _PADDING  # ensure length
-    ok, _ = is_relevant("Le secteur traverse une mutation", body)
+def test_content_floor_constant_is_400() -> None:
+    assert MIN_CONTENT_CHARS == 400
+
+
+def test_content_just_above_floor_with_tech_title_passes() -> None:
+    body = "x" * (MIN_CONTENT_CHARS + 1)
+    ok, _ = is_relevant("Nouveau smartphone Android", body)
     assert ok is True
 
 
-# -----------------------------------------------------------------------------
-# URL normalisation (regression — pinned by existing pipeline behaviour)
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 2b. CONTRACT — real off-topic categories that flooded the Localizer
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Élections cantonales : le parti socialiste vaudois en tête",
+        "Un film suisse primé au festival de cinéma de Locarno",
+        "La LNH dévoile le calendrier de la prochaine saison de hockey",
+        "Royal Air Maroc inaugure un vol direct Casablanca-Los Angeles",
+        "Le pape nomme un nouvel évêque pour le diocèse de Madrid",
+        "Marhaba 2026 : ce qui change à la douane pour les MRE",
+    ],
+)
+def test_real_offtopic_titles_rejected(title: str) -> None:
+    ok, reason = is_relevant(title, "Un article généraliste sans angle tech. " + _PAD)
+    assert ok is False
+    assert reason == "no_tech_signal"
+
+
+def test_italie_does_not_match_ia_token() -> None:
+    """Boundary guard preserved from v1: 'Italie' must not trigger the 'ia' token."""
+    ok, reason = is_relevant("L'Italie signe un accord économique", _PAD)
+    assert ok is False
+    assert reason == "no_tech_signal"
+
+
+# ---------------------------------------------------------------------------
+# 2c. CONTRACT — genuine tech (incl. tech-large additions) must pass
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Anthropic dévoile son nouveau modèle Claude",
+        "OpenAI annonce GPT-5",
+        "L'intelligence artificielle transforme la publicité",
+        "L'IA générative bouleverse le marketing",
+        "La French Tech lève 1 milliard cette semaine",
+        "Mila publie un nouveau benchmark",
+        "Yassir lève 100 millions pour son IA logistique",
+        "TCL lance une TV OLED 240 Hz pour les joueurs",  # tech-large: display/gaming
+        "Essai de la nouvelle voiture électrique autonome",  # tech-large: EV/autonomous
+        "حوار حول الذكاء الاصطناعي مع خبراء",  # Arabic
+    ],
+)
+def test_genuine_tech_titles_pass(title: str) -> None:
+    ok, _ = is_relevant(title, _PAD)
+    assert ok is True, f"Expected {title!r} to pass"
+
+
+def test_arabic_body_signal_passes() -> None:
+    body = "نص عربي طويل حول الذكاء الاصطناعي " * 20
+    ok, _ = is_relevant("تطور تقني جديد", body)
+    assert ok is True
+
+
+# ---------------------------------------------------------------------------
+# 3. PRODUCTION PARITY — offline replay on the real labeled corpus
+# ---------------------------------------------------------------------------
+
+_FIXTURE = Path(__file__).parents[3] / "fixtures" / "prefilter_labeled_corpus.json.gz"
+
+
+def _load_corpus() -> list[dict[str, str]]:
+    with gzip.open(_FIXTURE, "rt", encoding="utf-8") as fh:
+        data: list[dict[str, str]] = json.load(fh)
+    return data
+
+
+def test_offline_corpus_reproduces_measured_block_rates() -> None:
+    """Replay the V8 filter over the real labeled corpus and assert it
+    reproduces the production-measured discrimination:
+
+      - JUNK (141 articles the Localizer rejected as off-topic): >= 70% blocked
+        BEFORE any Claude call. Measured: 72.3% (102/141).
+      - GOOD (219 articles that produced a published draft): <= 8% blocked.
+        Measured: 6.4% (14/219), and those are overwhelmingly genuine
+        non-tech mis-acceptances (airlines, customs, finance), not tech loss.
+
+    Bands (not exact equality) tolerate ±a couple of articles from lexicon
+    tuning while still catching a real regression (e.g. the 'ai' bug would
+    send JUNK-blocked toward ~5%).
+    """
+    corpus = _load_corpus()
+    junk = [a for a in corpus if a["label"] == "JUNK"]
+    good = [a for a in corpus if a["label"] == "GOOD"]
+    assert len(junk) == 141 and len(good) == 219, "fixture drift"
+
+    junk_blocked = sum(1 for a in junk if not is_relevant(a["title"], a["content"])[0])
+    good_blocked = sum(1 for a in good if not is_relevant(a["title"], a["content"])[0])
+
+    junk_rate = junk_blocked / len(junk)
+    good_rate = good_blocked / len(good)
+
+    assert junk_rate >= 0.70, f"JUNK block rate regressed to {junk_rate:.1%} (expect ~72%)"
+    assert good_rate <= 0.08, f"GOOD loss rate too high at {good_rate:.1%} (expect ~6%)"
+
+
+# ---------------------------------------------------------------------------
+# 4. URL normalisation (regression — pinned pipeline behaviour, unchanged)
+# ---------------------------------------------------------------------------
 
 
 def test_normalize_url_strips_utm() -> None:
@@ -192,31 +238,10 @@ def test_normalize_url_strips_utm() -> None:
 
 
 def test_normalize_url_strips_trailing_slash() -> None:
-    a = normalize_url("https://wamda.com/article/")
-    b = normalize_url("https://wamda.com/article")
-    assert a == b
+    assert normalize_url("https://wamda.com/article/") == normalize_url("https://wamda.com/article")
 
 
 def test_url_hash_stable_for_equivalent_urls() -> None:
-    """Two URLs differing only in tracking params hash to the same key."""
     a = url_hash("https://maddyness.com/x?utm_campaign=foo")
     b = url_hash("https://maddyness.com/x")
     assert a == b
-
-
-# Parametric sanity matrix — quick regression sweep on canonical signals.
-@pytest.mark.parametrize(
-    "title",
-    [
-        "Anthropic dévoile son nouveau modèle",
-        "OpenAI annonce GPT-5",
-        "La France investit dans la French Tech",
-        "Bpifrance soutient une startup IA",
-        "Bengio: l'IA générative arrive",
-        "Mila publie un nouveau benchmark",
-        "حوار حول الذكاء الاصطناعي مع خبراء",
-    ],
-)
-def test_canonical_topic_sweep(title: str) -> None:
-    ok, _ = is_relevant(title, _PADDING)
-    assert ok is True, f"Expected '{title}' to be relevant"
