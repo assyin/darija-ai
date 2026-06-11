@@ -404,6 +404,7 @@ class ArticleProcessor:
                 text=content_darija,
                 lang="darija",
                 field="body",
+                raw_article_id=raw_article_id,
             )
             score_darija = result_darija.score
             nat_darija = result_darija.naturalness_score
@@ -421,6 +422,7 @@ class ArticleProcessor:
                     text=content_fr,
                     lang="french",
                     field="body",
+                    raw_article_id=raw_article_id,
                 )
                 score_fr = result_fr.score
                 nat_fr = result_fr.naturalness_score

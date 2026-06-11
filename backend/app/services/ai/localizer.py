@@ -148,7 +148,11 @@ class Localizer:
             user=user,
             model=self._model,
             max_tokens=8192,
-            metadata={"user_id": "system"},
+            # raw_article_id flows into ai_logs (LoggingLLMProvider extracts it
+            # and strips it before the Anthropic call) so Darija-localizer spend
+            # is attributable per article. Without it every Darija row logged
+            # NULL, breaking per-article cost attribution.
+            metadata={"user_id": "system", "raw_article_id": str(raw_article_id)},
             # The localizer_v3 system prompt is ~15.6k tokens — the heaviest
             # repeated input we send to Claude. Caching it cuts the input
             # bill ~90% on every call after the first within the 5-min window.
