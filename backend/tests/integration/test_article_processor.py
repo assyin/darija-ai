@@ -49,8 +49,21 @@ class _FakeLocalizer:
 
 
 class _FailingLocalizer:
+    """Transient/parse-shaped failure — should stay `failed` (retryable)."""
+
     async def localize(self, **_: Any) -> LocalizedArticle:
-        raise AIQualityError("boom", details={"reason": "test"})
+        raise AIQualityError("bad json", details={"reason": "invalid_json"})
+
+
+class _RejectingLocalizer:
+    """Mirrors Localizer when the model returns {"reject": true} — a permanent,
+    deterministic rejection that must NOT be retried."""
+
+    async def localize(self, **_: Any) -> LocalizedArticle:
+        raise AIQualityError(
+            "Model rejected the source article",
+            details={"reason": "rejected_by_model", "model_reason": "off-topic"},
+        )
 
 
 class _FakeQualityGate:
@@ -159,7 +172,9 @@ async def test_quality_failure_rejects_without_draft(pending_raw_id: int) -> Non
 
 
 @pytest.mark.asyncio
-async def test_localizer_error_marks_failed(pending_raw_id: int) -> None:
+async def test_localizer_transient_error_marks_failed(pending_raw_id: int) -> None:
+    """A parse-shaped AIQualityError (not a model reject) stays `failed` so
+    retry_failed can re-attempt it (the failure may be a transient model hiccup)."""
     processor = ArticleProcessor(
         localizer=_FailingLocalizer(),  # type: ignore[arg-type]
         quality_gate=_FakeQualityGate(passed=True),  # type: ignore[arg-type]
@@ -169,7 +184,27 @@ async def test_localizer_error_marks_failed(pending_raw_id: int) -> None:
     outcome = await processor.process(pending_raw_id)
 
     assert outcome.status == "failed"
+    assert "localizer_failed" in outcome.failures
     assert await _status_of(pending_raw_id) == "failed"
+    assert await _draft_for(pending_raw_id) is None
+
+
+@pytest.mark.asyncio
+async def test_model_reject_marks_rejected_terminal(pending_raw_id: int) -> None:
+    """A model rejection lands in the TERMINAL `rejected` status (not `failed`),
+    so retry_failed never re-localizes it — kills the deterministic-reject retry
+    leak (~70% of spend on ~7.5 retries per unfit article)."""
+    processor = ArticleProcessor(
+        localizer=_RejectingLocalizer(),  # type: ignore[arg-type]
+        quality_gate=_FakeQualityGate(passed=True),  # type: ignore[arg-type]
+        image_generator=None,
+    )
+
+    outcome = await processor.process(pending_raw_id)
+
+    assert outcome.status == "rejected"
+    assert "localizer_rejected" in outcome.failures
+    assert await _status_of(pending_raw_id) == "rejected"
     assert await _draft_for(pending_raw_id) is None
 
 

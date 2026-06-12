@@ -205,17 +205,35 @@ class ArticleProcessor:
                 _safe_french(),
             )
         except AIQualityError as exc:
-            log.error(
-                "article_processor.localizer_failed",
-                raw_article_id=raw_article_id,
-                details=exc.details,
-            )
-            await self._set_status(raw_article_id, STATUS_FAILED, reason=exc.message)
+            # A model rejection ({"reject": true}) is DETERMINISTIC for the same
+            # (content, prompt): retrying re-pays the full ~16k-token input only
+            # to get the same reject. Route it to the TERMINAL `rejected` status
+            # so `retry_failed` (which re-enqueues `failed` rows hourly) never
+            # re-processes it — this was draining ~70% of spend on ~7.5 retries
+            # per unfit article. Parse-shaped failures (invalid_json /
+            # missing_fields / not_an_object) can be a transient model hiccup, so
+            # they stay `failed` (retryable).
+            is_model_reject = exc.details.get("reason") == "rejected_by_model"
+            if is_model_reject:
+                log.info(
+                    "article_processor.localizer_rejected",
+                    raw_article_id=raw_article_id,
+                    details=exc.details,
+                )
+                status, failure = STATUS_REJECTED, "localizer_rejected"
+            else:
+                log.error(
+                    "article_processor.localizer_failed",
+                    raw_article_id=raw_article_id,
+                    details=exc.details,
+                )
+                status, failure = STATUS_FAILED, "localizer_failed"
+            await self._set_status(raw_article_id, status, reason=exc.message)
             return ProcessOutcome(
                 raw_article_id=raw_article_id,
-                status=STATUS_FAILED,
+                status=status,
                 quality_passed=False,
-                failures=["localizer_failed"],
+                failures=[failure],
                 duration_ms=_elapsed_ms(t0),
             )
 
