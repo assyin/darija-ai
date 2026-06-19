@@ -6,6 +6,49 @@ from typing import Literal
 from pydantic import Field, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Editorial source tiers (ERE MVP — see docs/EDITORIAL_RANKING_ENGINE_MVP_V1.md
+# Annexe A). Maps `sources.name` → editorial tier (A/B/C). Sources absent from
+# this map fall back to the "unknown" weight in the (not-yet-built) ranker.
+# Curated editorial config, not per-deployment → kept as a module constant
+# rather than an env-driven Settings field. DORMANT: no reader yet.
+SOURCE_TIERS: dict[str, str] = {
+    # Tier A — fiables, AI/Tech pur, faible bruit
+    "TechCrunch AI": "A",
+    "Anthropic News": "A",
+    "Hugging Face Blog": "A",
+    "Wamda": "A",
+    "Siècle Digital": "A",
+    "VentureBeat AI": "A",
+    "Menabytes": "A",
+    # Tier B — utiles mais mixtes
+    "Médias24": "B",
+    "Jeune Afrique": "B",
+    "CIO Mag": "B",
+    "Maddyness": "B",
+    "Frenchweb": "B",
+    "ICT Journal": "B",
+    "ZDNet FR": "B",
+    "Unite.AI": "B",
+    "Les Affaires": "B",
+    # Tier C — faibles/bruyants (signal régional ou résiduel)
+    "Maroc.ma": "C",
+    "TelQuel": "C",
+    "Yabiladi": "C",
+    "Bladi": "C",
+    "Financial Afrik": "C",
+    "Afrik.com": "C",
+    "Numerama": "C",
+    "Journal du Net": "C",
+    "Les Numériques": "C",
+    "La Presse Techno": "C",
+    "Datanews FR": "C",
+    "Le Temps": "C",
+    "Le Devoir": "C",
+    "Radio-Canada Techno": "C",
+    "Asharq Al-Awsat EN": "C",
+    "La Libre": "C",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -88,6 +131,28 @@ class Settings(BaseSettings):
     # plateau of 75 was the genuine quality floor (not an artifact).
     proofread_publish_ready_threshold: int = 80
     proofread_naturalness_floor: int = 75
+
+    # --- Editorial Ranking Engine (ERE) MVP — DORMANT config (Step 2) ---
+    # All flags default OFF and NOTHING reads these yet (the ranker job + the
+    # process_pending gate are later steps). Safe by construction:
+    #   - `enabled`  : when on, the (future) ranker computes & stores decisions
+    #     in Shadow — no effect on localization.
+    #   - `enforce`  : when on, process_pending (future change) gates to
+    #     'selected'. Rollback = flip back to false.
+    # See docs/EDITORIAL_RANKING_ENGINE_MVP_V1.md. SOURCE_TIERS is the module
+    # constant below.
+    editorial_ranking_enabled: bool = False
+    editorial_ranking_enforce: bool = False
+    editorial_ranking_max_per_day: int = 15
+    editorial_ranking_max_per_source_per_day: int = 3
+    editorial_ranking_min_score: int = 55
+    # Pipeline SHADOW integration (Step 5). When ON, `process_one` computes the
+    # deterministic ranker score for each processed article and records it to the
+    # SHADOW columns (editorial_score/editorial_decision/score_breakdown) — NEVER
+    # the business `processing_status`, NEVER a real selection/publication.
+    # OFF (default) = strictly identical behaviour. Fail-soft: a ranker error
+    # never breaks the pipeline.
+    editorial_ranking_shadow_enabled: bool = False
 
     # Public canonical site URL — used by IndexNow to build keyLocation +
     # article URLs to ping. Mirrors NEXT_PUBLIC_SITE_URL on the frontend, but

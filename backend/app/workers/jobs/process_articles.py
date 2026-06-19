@@ -5,12 +5,14 @@ from typing import Any
 from sqlalchemy import select
 from sqlmodel import col
 
+from app.core.config import SOURCE_TIERS
 from app.core.db import AsyncSessionLocal
 from app.core.exceptions import ExternalServiceError
 from app.core.logging import get_logger
 from app.models.raw_article import RawArticle
 from app.services.ai.claude_client import is_billing_error
 from app.services.ai.spend_guard import SpendGuard
+from app.services.editorial.shadow_recorder import maybe_record_shadow_ranking
 from app.services.pipeline.article_processor import ArticleProcessor
 
 log = get_logger("workers.jobs.process_articles")
@@ -68,6 +70,19 @@ async def process_one(ctx: dict[str, Any], raw_article_id: int) -> dict[str, Any
             "article_id": None,
             "quality_passed": False,
         }
+
+    # SHADOW observation (flag-gated, fail-soft, observe-only): record what the
+    # deterministic ranker WOULD decide for this article. Writes ONLY the
+    # decoupled editorial_* columns — never the business `processing_status`,
+    # never blocks processing, never calls an LLM. One bool check (no-op) when
+    # `editorial_ranking_shadow_enabled` is OFF. Self-contained fail-soft, so it
+    # can never break the pipeline.
+    await maybe_record_shadow_ranking(
+        raw_article_id,
+        enabled=settings.editorial_ranking_shadow_enabled,
+        threshold=settings.editorial_ranking_min_score,
+        tiers=SOURCE_TIERS,
+    )
 
     processor = ArticleProcessor.from_settings(settings, redis)
     try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -9,9 +10,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -30,6 +33,16 @@ class RawArticle(SQLModel, table=True):
             "idx_raw_articles_processing_status_fetched_at",
             "processing_status",
             "fetched_at",
+        ),
+        # Editorial Ranking Engine (ERE) MVP — schema only, dormant until the
+        # ranker job + flags arrive. Decoupled from processing_status.
+        CheckConstraint(
+            "editorial_decision IN ('unranked', 'selected', 'deferred')",
+            name="ck_raw_articles_editorial_decision",
+        ),
+        Index(
+            "idx_raw_articles_editorial_decision",
+            "editorial_decision",
         ),
     )
 
@@ -60,3 +73,16 @@ class RawArticle(SQLModel, table=True):
         sa_column=Column(String(20), nullable=False, index=True, server_default="pending"),
     )
     rejection_reason: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # --- Editorial Ranking Engine (ERE) MVP — dormant fields (no reader yet) ---
+    # editorial_decision is independent of processing_status: it records the
+    # ranker's verdict (unranked → selected/deferred). Nothing consumes these
+    # until the deterministic ranker + EDITORIAL_RANKING_ENABLED flag exist.
+    editorial_score: int | None = Field(default=None, sa_column=Column(SmallInteger, nullable=True))
+    editorial_decision: str = Field(
+        default="unranked",
+        sa_column=Column(String(12), nullable=False, server_default="unranked"),
+    )
+    score_breakdown: dict[str, Any] | None = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
