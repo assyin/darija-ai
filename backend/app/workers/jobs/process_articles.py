@@ -54,7 +54,11 @@ async def process_one(ctx: dict[str, Any], raw_article_id: int) -> dict[str, Any
     """
     settings = ctx["settings"]
     redis = ctx["cache_redis"]
-    guard = SpendGuard(redis=redis, hard_cap_usd=settings.ai_spend_daily_hard_cap_usd)
+    guard = SpendGuard(
+        redis=redis,
+        hard_cap_usd=settings.ai_spend_daily_hard_cap_usd,
+        monthly_cap_usd=settings.ai_monthly_cap_usd,
+    )
 
     allowed, reason, spend = await guard.allow()
     if not allowed:
@@ -93,7 +97,7 @@ async def process_one(ctx: dict[str, Any], raw_article_id: int) -> dict[str, Any
         # against a dead account.
         detail = str(exc.details.get("error", "")) if exc.details else ""
         if is_billing_error(detail) or is_billing_error(exc.message):
-            await guard.trip("billing_error", spend)
+            await guard.trip_emergency("billing_error", spend)
         raise
     return {
         "raw_article_id": outcome.raw_article_id,
