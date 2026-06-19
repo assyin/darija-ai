@@ -1,31 +1,36 @@
-"""Hard circuit breaker for AI spend.
+"""Hard circuit breaker for AI spend — V2 (budget vs emergency).
 
-CLAUDE.md §1 caps infra at $50/mo and §5 mandates a $5/day alert. Before this
-module the daily check only *alerted* (Sentry) — it never *stopped* anything,
-so a backlog flush or a runaway loop could drain the whole Anthropic balance
-before anyone reacted (see the 2026-06-08 outage RCA).
+V1 used a single sticky flag (`ai:paused`, no TTL) for BOTH "daily budget
+reached" and "billing/quota failure". The sticky behaviour is correct for a
+genuine failure (never auto-resume into a dead account — see the 2026-06-08
+outage RCA) but creates daily operator toil for the normal budget case, and it
+ignores the monthly ceiling (`$2/day x 30 = $60 > $50/mo` cap, CLAUDE.md §1).
 
-:class:`SpendGuard` turns the soft alert into an enforcing gate. Evaluated
-*before every article* (in ``process_one``), it:
+V2 splits the two concerns:
 
-  1. checks a Redis pause flag — if set, AI processing is paused (skip, no call);
-  2. otherwise sums today's Claude spend and, if it has reached the hard cap,
-     **trips the flag** (pause) and skips.
+  * **Budget pause** (`daily_cap_reached`) → key with a TTL to the next UTC
+    midnight, so it AUTO-resumes exactly when today's spend window resets. No
+    operator action needed.
+  * **Emergency pause** (`billing_error`, `monthly_cap_reached`, or operator
+    kill-switch) → STICKY key with no TTL, manual resume only. Preserves every
+    V1 safety guarantee where it matters (dead account / monthly breach).
 
-It is also tripped immediately on a billing/quota error so we stop hammering a
-dead account. The flag has **no TTL**: once tripped, processing stays paused
-until a human clears it (``app/scripts/resume_ai_processing.py``). This is the
-intended safety behaviour — never silently auto-resume into a drain.
+`allow()` (evaluated before every article in ``process_one``):
+  1. emergency pause set → blocked (sticky);
+  2. budget pause set → blocked (auto-expires at midnight);
+  3. month-to-date spend ≥ monthly cap → trip EMERGENCY (sticky) and block;
+  4. today's spend ≥ daily cap → trip BUDGET (auto-resume) and block;
+  5. otherwise allow.
 
-Every trip emits a CRITICAL structured log + a Sentry message that states the
-pause is **voluntary and preventive**, with the spend and cap.
+The legacy V1 key is still honoured as an emergency pause so a V2 rollout never
+silently unpauses an already-paused production; the resume script clears it.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -45,9 +50,19 @@ except ImportError:  # pragma: no cover
 
 log = get_logger("services.ai.spend_guard")
 
-# Redis key for the pause flag. Stored value is a JSON record (reason, spend,
-# cap, tripped_at) for observability; presence alone means "paused".
-PAUSE_KEY = "ai:paused"
+# --- Pause keys ---
+# Budget pause: daily cap reached. AUTO-resumes at UTC midnight (TTL) because
+# today's spend window resets then. Recurring, expected, low severity.
+BUDGET_PAUSE_KEY = "ai:paused:budget"
+# Emergency pause: billing/quota failure or the monthly guardrail. STICKY (no
+# TTL) — manual resume only, so we never auto-resume into a dead account or
+# breach the monthly ceiling. Preserves the 2026-06-08 safety lesson.
+EMERGENCY_PAUSE_KEY = "ai:paused:emergency"
+# Legacy V1 key. Honoured as an emergency (sticky) pause so a V2 rollout never
+# silently unpauses an already-paused production. Cleared by the resume script.
+LEGACY_PAUSE_KEY = "ai:paused"
+# Back-compat alias (importers / observability scripts).
+PAUSE_KEY = LEGACY_PAUSE_KEY
 
 SessionFactory = Callable[[], "AsyncSession"]
 SpendFn = Callable[[], Awaitable[Decimal]]
@@ -68,11 +83,32 @@ async def today_ai_spend(session_factory: SessionFactory = AsyncSessionLocal) ->
     return Decimal(str(row[0]))
 
 
-class SpendGuard:
-    """Enforcing daily spend gate backed by a Redis pause flag.
+async def month_ai_spend(session_factory: SessionFactory = AsyncSessionLocal) -> Decimal:
+    """Sum of successful AI spend (all providers) since the 1st of the UTC month."""
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT COALESCE(SUM(cost_usd), 0)::numeric "
+                    "FROM ai_logs "
+                    "WHERE success = true AND created_at >= date_trunc('month', NOW())"
+                )
+            )
+        ).one()
+    return Decimal(str(row[0]))
 
-    ``spend_fn`` is injectable so tests can drive the spend without a DB. In
-    production it defaults to :func:`today_ai_spend`.
+
+def seconds_until_utc_midnight(now: datetime) -> int:
+    """Whole seconds from ``now`` to the next UTC midnight (always >= 1)."""
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((tomorrow - now).total_seconds()))
+
+
+class SpendGuard:
+    """Enforcing spend gate with a split budget/emergency pause model.
+
+    ``spend_fn`` / ``month_spend_fn`` are injectable so tests can drive spend
+    without a DB. In production they default to the ``ai_logs`` aggregates.
     """
 
     def __init__(
@@ -80,61 +116,120 @@ class SpendGuard:
         *,
         redis: Redis,
         hard_cap_usd: float,
+        monthly_cap_usd: float,
         spend_fn: SpendFn = today_ai_spend,
+        month_spend_fn: SpendFn = month_ai_spend,
     ) -> None:
         self._redis = redis
         self._cap = Decimal(str(hard_cap_usd))
+        self._monthly_cap = Decimal(str(monthly_cap_usd))
         self._spend_fn = spend_fn
+        self._month_spend_fn = month_spend_fn
+
+    async def _is_set(self, key: str) -> bool:
+        return (await self._redis.get(key)) is not None
+
+    async def is_emergency_paused(self) -> bool:
+        """Sticky pause: a real emergency key OR the honoured legacy V1 key."""
+        return await self._is_set(EMERGENCY_PAUSE_KEY) or await self._is_set(LEGACY_PAUSE_KEY)
+
+    async def is_budget_paused(self) -> bool:
+        return await self._is_set(BUDGET_PAUSE_KEY)
 
     async def is_paused(self) -> bool:
-        return (await self._redis.get(PAUSE_KEY)) is not None
+        return await self.is_emergency_paused() or await self.is_budget_paused()
 
     async def allow(self) -> tuple[bool, str | None, Decimal]:
-        """Gate one unit of AI work.
+        """Gate one unit of AI work. Returns ``(allowed, reason, spend)``.
 
-        Returns ``(allowed, reason, today_spend)``. When ``allowed`` is False
-        the caller MUST skip all AI calls. ``reason`` is ``already_paused`` when
-        the breaker was tripped earlier, or ``daily_cap_reached`` when this call
-        tripped it.
+        When ``allowed`` is False the caller MUST skip all AI calls.
         """
-        if await self.is_paused():
-            return False, "already_paused", Decimal("0")
+        # 1. Emergency pause (sticky) takes precedence — never auto-resumes.
+        if await self.is_emergency_paused():
+            return False, "emergency_paused", Decimal("0")
+        # 2. Budget pause (auto-expires at UTC midnight).
+        if await self.is_budget_paused():
+            return False, "budget_paused", Decimal("0")
+        # 3. Monthly guardrail → emergency (sticky): autonomy must not breach the
+        #    monthly ceiling even though daily caps alone would allow it.
+        month_spend = await self._month_spend_fn()
+        if month_spend >= self._monthly_cap:
+            await self.trip_emergency("monthly_cap_reached", month_spend)
+            return False, "monthly_cap_reached", month_spend
+        # 4. Daily hard cap → budget pause (auto-resumes next UTC day).
         spend = await self._spend_fn()
         if spend >= self._cap:
-            await self.trip("daily_cap_reached", spend)
+            await self.trip_budget("daily_cap_reached", spend)
             return False, "daily_cap_reached", spend
         return True, None, spend
 
-    async def trip(self, reason: str, spend: Decimal) -> None:
-        """Pause AI processing (idempotent). No-op if already paused."""
-        if await self.is_paused():
+    async def trip_budget(self, reason: str, spend: Decimal) -> None:
+        """Budget pause (idempotent). TTL → auto-resume at next UTC midnight."""
+        if await self.is_budget_paused():
             return
+        now = datetime.now(UTC)
+        ttl = seconds_until_utc_midnight(now)
         payload = json.dumps(
             {
+                "kind": "budget",
                 "reason": reason,
                 "spend_usd": str(spend),
                 "hard_cap_usd": str(self._cap),
-                "tripped_at": datetime.now(UTC).isoformat(),
+                "tripped_at": now.isoformat(),
+                "auto_resume": "next UTC midnight",
+                "ttl_seconds": ttl,
             }
         )
-        await self._redis.set(PAUSE_KEY, payload)  # no TTL → manual resume only
-        message = (
-            f"🛑 AI processing PAUSED (preventive, voluntary). reason={reason}, "
-            f"today_spend=${spend:.4f}, hard_cap=${self._cap:.2f}. "
-            f"Manual resume required (clear Redis key '{PAUSE_KEY}')."
-        )
-        log.critical(
-            "ai.spend_guard.tripped",
+        await self._redis.set(BUDGET_PAUSE_KEY, payload, ex=ttl)
+        log.warning(
+            "ai.spend_guard.budget_paused",
             reason=reason,
             spend_usd=str(spend),
             hard_cap_usd=str(self._cap),
+            ttl_seconds=ttl,
+            message=(
+                f"AI processing BUDGET-paused (daily cap ${self._cap:.2f} reached, "
+                f"today_spend=${spend:.4f}). Auto-resumes at UTC midnight (~{ttl}s)."
+            ),
+        )
+
+    async def trip_emergency(self, reason: str, spend: Decimal) -> None:
+        """Emergency pause (idempotent). STICKY — no TTL, manual resume only."""
+        if await self.is_emergency_paused():
+            return
+        payload = json.dumps(
+            {
+                "kind": "emergency",
+                "reason": reason,
+                "spend_usd": str(spend),
+                "hard_cap_usd": str(self._cap),
+                "monthly_cap_usd": str(self._monthly_cap),
+                "tripped_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        await self._redis.set(EMERGENCY_PAUSE_KEY, payload)  # no TTL → manual resume
+        message = (
+            f"🛑 AI processing EMERGENCY-paused (preventive, voluntary). reason={reason}, "
+            f"spend=${spend:.4f}. Manual resume required "
+            f"(python -m app.scripts.resume_ai_processing)."
+        )
+        log.critical(
+            "ai.spend_guard.emergency_paused",
+            reason=reason,
+            spend_usd=str(spend),
+            monthly_cap_usd=str(self._monthly_cap),
             message=message,
         )
         if sentry_sdk is not None:
             sentry_sdk.capture_message(message, level="error")
 
     async def clear(self) -> bool:
-        """Manual resume — remove the pause flag. Returns True if one existed."""
-        removed = bool(await self._redis.delete(PAUSE_KEY))
+        """Manual full resume — remove budget, emergency, and legacy pauses.
+
+        Returns True if at least one pause flag was removed.
+        """
+        removed = 0
+        for key in (EMERGENCY_PAUSE_KEY, BUDGET_PAUSE_KEY, LEGACY_PAUSE_KEY):
+            removed += int(await self._redis.delete(key))
         log.warning("ai.spend_guard.cleared", removed=removed)
-        return removed
+        return removed > 0
