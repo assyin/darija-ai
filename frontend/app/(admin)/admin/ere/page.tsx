@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RtlContent } from "@/components/shared/rtl-content";
 import { EreAuditActions } from "@/components/admin/ere-audit-actions";
+import { ArticleHub } from "@/components/admin/article-hub";
 import { adminApi } from "@/lib/api-client";
 import { stripBdi } from "@/lib/bidi";
 
@@ -537,6 +538,14 @@ export default function EreDashboard(): React.ReactElement {
             ✅ Queue empty — all scored articles have been audited.
           </div>
         )}
+      </section>
+
+      {/* Editorial hub — manage every article (draft + published) */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+          📚 Catalogue — gérer tous les articles
+        </h2>
+        <ArticleHub />
       </section>
 
       {/* §2 Score Distribution */}
