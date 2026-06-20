@@ -148,14 +148,24 @@ export function EreAuditActions({ articleId }: { articleId: number }): React.Rea
           {editing ? "Annuler" : "Corriger"}
         </Button>
         {article.is_published ? (
-          <Button
-            variant="destructive"
-            className={BTN}
-            disabled={unpublish.isPending}
-            onClick={() => unpublish.mutate()}
-          >
-            Dépublier
-          </Button>
+          <>
+            <a
+              className={`${BTN} inline-flex items-center rounded-md border border-emerald-200 bg-white font-medium text-emerald-700 hover:bg-emerald-50`}
+              target="_blank"
+              rel="noopener noreferrer"
+              href={`/articles/${article.slug}`}
+            >
+              Voir l&apos;article ↗
+            </a>
+            <Button
+              variant="destructive"
+              className={BTN}
+              disabled={unpublish.isPending}
+              onClick={() => unpublish.mutate()}
+            >
+              Dépublier
+            </Button>
+          </>
         ) : confirmPub ? (
           <Button
             className={`${BTN} bg-amber-600 text-white hover:bg-amber-700`}
