@@ -10,9 +10,18 @@ Verdict = Literal["KEEP", "REJECT"]
 
 
 class AuditQueueItem(BaseModel):
-    id: int
-    title: str
+    id: int  # raw_article id (target of POST /audit/verdict)
+    title: str  # original title
+    title_darija: str | None = None
+    title_fr: str | None = None
     source: str
+    original_url: str | None = None
+    image_url: str | None = None
+    excerpt: str | None = None
+    content_darija: str | None = None  # truncated preview
+    content_fr: str | None = None  # truncated preview
+    is_published: bool | None = None
+    article_id: int | None = None  # articles.id, for the admin "open full article" link
     score: int
     decision: str
     category: str

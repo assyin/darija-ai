@@ -82,7 +82,16 @@ interface SpendGuard {
 interface AuditQueueItem {
   id: number;
   title: string;
+  title_darija: string | null;
+  title_fr: string | null;
   source: string;
+  original_url: string | null;
+  image_url: string | null;
+  excerpt: string | null;
+  content_darija: string | null;
+  content_fr: string | null;
+  is_published: boolean | null;
+  article_id: number | null;
   score: number;
   decision: string;
   category: string;
@@ -225,16 +234,21 @@ export default function EreDashboard(): React.ReactElement {
   );
   const auditMetrics = useEre<AuditMetrics>("audit-metrics", "/ere/audit/metrics");
   const [auditNotes, setAuditNotes] = React.useState("");
+  const [selectedIdx, setSelectedIdx] = React.useState(0);
+  const [tab, setTab] = React.useState<"darija" | "fr" | "original">("darija");
   const verdictMutation = useMutation({
     mutationFn: (vars: { article_id: number; human_verdict: "KEEP" | "REJECT"; notes: string }) =>
       adminApi.post("/ere/audit/verdict", vars),
     onSuccess: () => {
       setAuditNotes("");
+      setSelectedIdx(0);
+      setTab("darija");
       void qc.invalidateQueries({ queryKey: ["ere", "audit-queue"] });
       void qc.invalidateQueries({ queryKey: ["ere", "audit-metrics"] });
     },
   });
-  const currentAudit = auditQueue.data?.data[0];
+  const auditItems = auditQueue.data?.data ?? [];
+  const currentAudit = auditItems[selectedIdx] ?? auditItems[0];
   const submitVerdict = (verdict: "KEEP" | "REJECT") => {
     if (!currentAudit) return;
     verdictMutation.mutate({ article_id: currentAudit.id, human_verdict: verdict, notes: auditNotes });
@@ -320,62 +334,189 @@ export default function EreDashboard(): React.ReactElement {
         {auditQueue.isLoading ? (
           <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
         ) : currentAudit ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span className="truncate" title={currentAudit.title}>
-                  {currentAudit.title}
-                </span>
-                <span className="ms-3 shrink-0 text-sm font-normal text-slate-500">
-                  {auditQueue.data?.data.length ?? 0} in queue
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">{currentAudit.source}</span>
-                <span className="font-semibold">score {currentAudit.score}</span>
-                <DecisionBadge decision={currentAudit.decision} />
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                  {currentAudit.category}
-                </span>
+          <div className="grid gap-4 lg:grid-cols-12">
+            {/* Left: queue selector */}
+            <div className="lg:col-span-3">
+              <div className={CARD}>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Queue ({auditItems.length})
+                </div>
+                <div className="max-h-[28rem] space-y-1 overflow-auto">
+                  {auditItems.map((it, i) => (
+                    <button
+                      key={it.id}
+                      onClick={() => {
+                        setSelectedIdx(i);
+                        setTab("darija");
+                      }}
+                      className={`block w-full truncate rounded px-2 py-1 text-start text-xs ${
+                        i === selectedIdx
+                          ? "bg-indigo-50 font-medium text-indigo-900"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="font-semibold">{it.score}</span> · {it.title}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <details className="text-xs">
-                <summary className="cursor-pointer text-slate-500">Score breakdown</summary>
-                <pre className="mt-1 max-h-48 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
-                  {JSON.stringify(currentAudit.breakdown, null, 2)}
-                </pre>
-              </details>
-              <textarea
-                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                rows={2}
-                placeholder="Notes (optional)…"
-                value={auditNotes}
-                onChange={(e) => setAuditNotes(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  disabled={verdictMutation.isPending}
-                  onClick={() => submitVerdict("KEEP")}
-                >
-                  KEEP
-                </Button>
-                <Button
-                  variant="destructive"
-                  disabled={verdictMutation.isPending}
-                  onClick={() => submitVerdict("REJECT")}
-                >
-                  REJECT
-                </Button>
-                {verdictMutation.isError ? (
-                  <span className="self-center text-sm text-red-600">
-                    Save failed — retry.
+            </div>
+
+            {/* Main: article preview */}
+            <div className="lg:col-span-6">
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  {currentAudit.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={currentAudit.image_url}
+                      alt=""
+                      className="max-h-56 w-full rounded object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-28 items-center justify-center rounded bg-slate-100 text-sm text-slate-400">
+                      No image available
+                    </div>
+                  )}
+                  <div className="flex gap-1 border-b border-slate-200 text-sm">
+                    {(["darija", "fr", "original"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setTab(t)}
+                        className={`px-3 py-1.5 ${
+                          tab === t
+                            ? "border-b-2 border-indigo-500 font-semibold text-indigo-700"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        {t === "darija" ? "Darija" : t === "fr" ? "Français" : "Original / Source"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {tab === "darija" ? (
+                    <div dir="rtl" className="space-y-2">
+                      <h3 className="font-bold text-slate-900">{currentAudit.title_darija ?? "—"}</h3>
+                      {currentAudit.excerpt ? (
+                        <p className="text-sm text-slate-500">{currentAudit.excerpt}</p>
+                      ) : null}
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                        {currentAudit.content_darija
+                          ? currentAudit.content_darija.slice(0, 1200) +
+                            (currentAudit.content_darija.length > 1200 ? "…" : "")
+                          : "No Darija content available yet."}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {tab === "fr" ? (
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-slate-900">{currentAudit.title_fr ?? "—"}</h3>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                        {currentAudit.content_fr
+                          ? currentAudit.content_fr.slice(0, 1200) +
+                            (currentAudit.content_fr.length > 1200 ? "…" : "")
+                          : "No French content available yet."}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {tab === "original" ? (
+                    <div className="space-y-1 text-sm text-slate-700">
+                      <h3 className="font-bold text-slate-900">{currentAudit.title}</h3>
+                      <div>Source: {currentAudit.source}</div>
+                      <div>
+                        Status:{" "}
+                        {currentAudit.is_published === null
+                          ? "no localized article"
+                          : currentAudit.is_published
+                            ? "published"
+                            : "draft"}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-3 pt-1 text-sm">
+                    {currentAudit.article_id !== null ? (
+                      <a
+                        className="text-indigo-600 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href={`/admin/articles/${currentAudit.article_id}`}
+                      >
+                        Open full article ↗
+                      </a>
+                    ) : null}
+                    {currentAudit.original_url ? (
+                      <a
+                        className="text-indigo-600 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href={currentAudit.original_url}
+                      >
+                        Open source ↗
+                      </a>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right: score explanation + decision */}
+            <div className="lg:col-span-3">
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    ERE score
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-bold text-slate-900">{currentAudit.score}</span>
+                    <DecisionBadge decision={currentAudit.decision} />
+                  </div>
+                  <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                    {currentAudit.category}
                   </span>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-slate-500">Score breakdown</summary>
+                    <pre className="mt-1 max-h-40 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
+                      {JSON.stringify(currentAudit.breakdown, null, 2)}
+                    </pre>
+                  </details>
+                  <hr className="border-slate-200" />
+                  <p className="text-xs font-medium text-amber-600">
+                    Review the content before deciding.
+                  </p>
+                  <textarea
+                    className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                    rows={2}
+                    placeholder="Notes (optional)…"
+                    value={auditNotes}
+                    onChange={(e) => setAuditNotes(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                      disabled={verdictMutation.isPending}
+                      onClick={() => submitVerdict("KEEP")}
+                    >
+                      KEEP
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1"
+                      disabled={verdictMutation.isPending}
+                      onClick={() => submitVerdict("REJECT")}
+                    >
+                      REJECT
+                    </Button>
+                  </div>
+                  {verdictMutation.isError ? (
+                    <span className="text-sm text-red-600">Save failed — retry.</span>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         ) : (
           <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
             ✅ Queue empty — all scored articles have been audited.
