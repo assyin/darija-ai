@@ -14,6 +14,12 @@ from app.core.db import get_db
 from app.core.redis import get_redis_client
 from app.core.security import require_admin
 from app.schemas.auth import AdminUser
+from app.schemas.ere_audit import (
+    AuditMetrics,
+    AuditQueueList,
+    AuditRecord,
+    AuditVerdictIn,
+)
 from app.schemas.ere_dashboard import (
     EreArticleList,
     EreCategoryList,
@@ -22,6 +28,7 @@ from app.schemas.ere_dashboard import (
     EreSourceList,
     EreSpendGuard,
 )
+from app.services.editorial import audit_service
 from app.services.editorial import dashboard_service as svc
 
 router = APIRouter(prefix="/admin/ere", tags=["admin", "ere"])
@@ -104,3 +111,40 @@ async def get_spendguard(
         )
     finally:
         await redis.aclose()
+
+
+# --- Human Audit V1 (writes ONLY into editorial_audits) ---
+
+
+@router.get("/audit/queue", response_model=AuditQueueList)
+async def get_audit_queue(
+    cursor: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
+) -> AuditQueueList:
+    items, next_cursor = await audit_service.audit_queue(session, cursor=cursor, limit=limit)
+    return AuditQueueList(data=items, next_cursor=next_cursor)
+
+
+@router.post("/audit/verdict", response_model=AuditRecord)
+async def post_audit_verdict(
+    payload: AuditVerdictIn,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_admin),
+) -> AuditRecord:
+    return await audit_service.record_verdict(
+        session,
+        article_id=payload.article_id,
+        human_verdict=payload.human_verdict,
+        notes=payload.notes,
+        reviewer=admin.email,
+    )
+
+
+@router.get("/audit/metrics", response_model=AuditMetrics)
+async def get_audit_metrics(
+    session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_admin),
+) -> AuditMetrics:
+    return await audit_service.audit_metrics(session)
