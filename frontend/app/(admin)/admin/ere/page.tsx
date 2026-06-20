@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { adminApi } from "@/lib/api-client";
 
@@ -77,6 +78,24 @@ interface SpendGuard {
   budget_pause: PauseFlag;
   emergency_pause: PauseFlag;
   next_auto_resume: string | null;
+}
+interface AuditQueueItem {
+  id: number;
+  title: string;
+  source: string;
+  score: number;
+  decision: string;
+  category: string;
+  breakdown: Record<string, unknown>;
+}
+interface AuditMetrics {
+  audited: number;
+  tp: number;
+  fp: number;
+  fn: number;
+  tn: number;
+  precision: number;
+  recall: number;
 }
 
 const CARD = "rounded-lg border border-slate-200 bg-white p-4 shadow-sm";
@@ -198,6 +217,29 @@ export default function EreDashboard(): React.ReactElement {
     "/ere/articles?score_min=50&score_max=60&limit=100",
   );
 
+  // --- Human Audit V1 (writes only into editorial_audits) ---
+  const qc = useQueryClient();
+  const auditQueue = useEre<{ data: AuditQueueItem[]; next_cursor: string | null }>(
+    "audit-queue",
+    "/ere/audit/queue?limit=20",
+  );
+  const auditMetrics = useEre<AuditMetrics>("audit-metrics", "/ere/audit/metrics");
+  const [auditNotes, setAuditNotes] = React.useState("");
+  const verdictMutation = useMutation({
+    mutationFn: (vars: { article_id: number; human_verdict: "KEEP" | "REJECT"; notes: string }) =>
+      adminApi.post("/ere/audit/verdict", vars),
+    onSuccess: () => {
+      setAuditNotes("");
+      void qc.invalidateQueries({ queryKey: ["ere", "audit-queue"] });
+      void qc.invalidateQueries({ queryKey: ["ere", "audit-metrics"] });
+    },
+  });
+  const currentAudit = auditQueue.data?.data[0];
+  const submitVerdict = (verdict: "KEEP" | "REJECT") => {
+    if (!currentAudit) return;
+    verdictMutation.mutate({ article_id: currentAudit.id, human_verdict: verdict, notes: auditNotes });
+  };
+
   const histMax = Math.max(1, ...(distribution.data?.histogram.map((h) => h.count) ?? [1]));
   const bucketMax = Math.max(1, ...(distribution.data?.buckets.map((b) => b.count) ?? [1]));
   const catMax = Math.max(1, ...(categories.data?.data.map((c) => c.count) ?? [1]));
@@ -257,6 +299,87 @@ export default function EreDashboard(): React.ReactElement {
           </div>
         ) : (
           <p className="text-sm text-red-600">Erreur de chargement.</p>
+        )}
+      </section>
+
+      {/* Human Audit V1 */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-indigo-600">
+          ✍️ Human Audit — review ERE shadow decisions
+        </h2>
+        {auditMetrics.data ? (
+          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <StatCard label="Audited" value={auditMetrics.data.audited} />
+            <StatCard label="Precision" value={fmtPct(auditMetrics.data.precision * 100)} />
+            <StatCard label="Recall" value={fmtPct(auditMetrics.data.recall * 100)} />
+            <StatCard label="False positives" value={auditMetrics.data.fp} />
+            <StatCard label="False negatives" value={auditMetrics.data.fn} />
+          </div>
+        ) : null}
+
+        {auditQueue.isLoading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+        ) : currentAudit ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="truncate" title={currentAudit.title}>
+                  {currentAudit.title}
+                </span>
+                <span className="ms-3 shrink-0 text-sm font-normal text-slate-500">
+                  {auditQueue.data?.data.length ?? 0} in queue
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-500">{currentAudit.source}</span>
+                <span className="font-semibold">score {currentAudit.score}</span>
+                <DecisionBadge decision={currentAudit.decision} />
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                  {currentAudit.category}
+                </span>
+              </div>
+              <details className="text-xs">
+                <summary className="cursor-pointer text-slate-500">Score breakdown</summary>
+                <pre className="mt-1 max-h-48 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
+                  {JSON.stringify(currentAudit.breakdown, null, 2)}
+                </pre>
+              </details>
+              <textarea
+                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                rows={2}
+                placeholder="Notes (optional)…"
+                value={auditNotes}
+                onChange={(e) => setAuditNotes(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  disabled={verdictMutation.isPending}
+                  onClick={() => submitVerdict("KEEP")}
+                >
+                  KEEP
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={verdictMutation.isPending}
+                  onClick={() => submitVerdict("REJECT")}
+                >
+                  REJECT
+                </Button>
+                {verdictMutation.isError ? (
+                  <span className="self-center text-sm text-red-600">
+                    Save failed — retry.
+                  </span>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+            ✅ Queue empty — all scored articles have been audited.
+          </div>
         )}
       </section>
 
@@ -530,7 +653,7 @@ export default function EreDashboard(): React.ReactElement {
           Coming Soon
         </h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          {["Human audit", "Precision tracking", "Recall tracking", "Enforce mode", "Auto-publish"].map(
+          {["Precision tracking", "Recall tracking", "Enforce mode", "Auto-publish"].map(
             (label) => (
               <div
                 key={label}
