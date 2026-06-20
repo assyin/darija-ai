@@ -144,13 +144,15 @@ _ARTICLES_SQL = text(
     )
     SELECT id, title, source, score, decision, category, actors, computed_at
     FROM scored
-    WHERE (:decision IS NULL OR decision = :decision)
-      AND (:source   IS NULL OR source = :source)
-      AND (:category IS NULL OR category = :category)
+    WHERE (CAST(:decision AS text) IS NULL OR decision = :decision)
+      AND (CAST(:source   AS text) IS NULL OR source = :source)
+      AND (CAST(:category AS text) IS NULL OR category = :category)
       AND score BETWEEN :score_min AND :score_max
-      AND (:date_from IS NULL OR computed_at::timestamptz >= CAST(:date_from AS timestamptz))
-      AND (:date_to   IS NULL OR computed_at::timestamptz <  CAST(:date_to AS timestamptz))
-      AND (:cur_score IS NULL OR (score, id) < (:cur_score, :cur_id))
+      AND (CAST(:date_from AS timestamptz) IS NULL
+           OR computed_at::timestamptz >= CAST(:date_from AS timestamptz))
+      AND (CAST(:date_to AS timestamptz) IS NULL
+           OR computed_at::timestamptz <  CAST(:date_to AS timestamptz))
+      AND (CAST(:cur_score AS int) IS NULL OR (score, id) < (:cur_score, :cur_id))
     ORDER BY score DESC, id DESC
     LIMIT :limit
     """
