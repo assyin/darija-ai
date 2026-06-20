@@ -21,10 +21,20 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 # Scored, NOT-yet-audited articles, ordered borderline-first (closest to the 55
-# threshold). Keyset cursor on (distance, id). Category derived inline.
+# threshold). Keyset cursor on (distance, id). Category derived inline. Preview
+# data is LEFT-JOINed from the localized `articles` row (may be absent). Content
+# is truncated server-side. Read-only: nothing here writes.
 _QUEUE_SQL = text(
     """
-    SELECT r.id::int AS id, r.original_title AS title, s.name AS source,
+    SELECT r.id::int AS id, r.original_title AS title,
+           a.title_darija AS title_darija, a.title_fr AS title_fr,
+           s.name AS source, r.external_url AS original_url,
+           COALESCE(a.hero_image_url, r.original_image_url) AS image_url,
+           COALESCE(a.excerpt_darija, r.original_excerpt) AS excerpt,
+           left(a.content_darija, 1500) AS content_darija,
+           left(a.content_fr, 1500) AS content_fr,
+           a.is_published AS is_published,
+           a.id::int AS article_id,
            r.editorial_score::int AS score, r.editorial_decision AS decision,
            CASE
              WHEN (r.score_breakdown->'importance_detail'->>'strategic_label') <> 'none'
@@ -37,9 +47,10 @@ _QUEUE_SQL = text(
            ABS(r.editorial_score - 55)::int AS dist
     FROM raw_articles r
     JOIN sources s ON s.id = r.source_id
-    LEFT JOIN editorial_audits a ON a.article_id = r.id
+    LEFT JOIN articles a ON a.raw_article_id = r.id AND a.deleted_at IS NULL
+    LEFT JOIN editorial_audits au ON au.article_id = r.id
     WHERE r.editorial_score IS NOT NULL
-      AND a.id IS NULL
+      AND au.id IS NULL
       AND (
         CAST(:cur_dist AS int) IS NULL
         OR (ABS(r.editorial_score - 55), r.id) > (:cur_dist, :cur_id)
@@ -87,7 +98,16 @@ async def audit_queue(
         AuditQueueItem(
             id=int(r.id),
             title=r.title,
+            title_darija=r.title_darija,
+            title_fr=r.title_fr,
             source=r.source,
+            original_url=r.original_url,
+            image_url=r.image_url,
+            excerpt=r.excerpt,
+            content_darija=r.content_darija,
+            content_fr=r.content_fr,
+            is_published=bool(r.is_published) if r.is_published is not None else None,
+            article_id=int(r.article_id) if r.article_id is not None else None,
             score=int(r.score),
             decision=r.decision,
             category=r.category,

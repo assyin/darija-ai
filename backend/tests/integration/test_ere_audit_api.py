@@ -18,6 +18,7 @@ from sqlalchemy import delete, text
 from sqlmodel import col
 
 from app.core.db import AsyncSessionLocal
+from app.models.article import Article
 from app.models.raw_article import RawArticle
 from app.models.source import Source
 
@@ -69,11 +70,29 @@ async def audit_data() -> AsyncIterator[dict[str, int]]:
             await session.commit()
             await session.refresh(raw)
             ids[label] = int(raw.id)  # type: ignore[arg-type]
+        # Article "A" has a localized row (preview data); the others do not.
+        session.add(
+            Article(
+                raw_article_id=ids["A"],
+                slug=f"audit-{token}-a",
+                title_darija="عنوان بالدارجة",
+                excerpt_darija="ملخص بالدارجة",
+                content_darija="المحتوى بالدارجة " * 30,
+                title_fr="Titre FR",
+                content_fr="Contenu en français. " * 30,
+                hero_image_url="https://img.example/hero.jpg",
+                is_published=True,
+            )
+        )
+        await session.commit()
 
     yield ids
 
     async with AsyncSessionLocal() as session:
-        # editorial_audits cascade-delete with the raw_articles.
+        # articles FK is ON DELETE RESTRICT → delete articles first, then raws.
+        await session.execute(
+            delete(Article).where(col(Article.raw_article_id).in_(list(ids.values())))
+        )
         await session.execute(delete(RawArticle).where(col(RawArticle.source_id) == sid))
         await session.execute(delete(Source).where(col(Source.id) == sid))
         await session.commit()
@@ -125,6 +144,26 @@ async def test_queue_borderline_first_and_excludes_audited(
     await _verdict(client, auth_headers, audit_data["B"], "KEEP")
     q2 = (await client.get("/api/v1/admin/ere/audit/queue", headers=auth_headers)).json()["data"]
     assert audit_data["B"] not in {x["id"] for x in q2}
+
+
+@pytest.mark.asyncio
+async def test_queue_includes_preview_fields(
+    client: AsyncClient, audit_data: dict[str, int], auth_headers: dict[str, str]
+) -> None:
+    q = (await client.get("/api/v1/admin/ere/audit/queue", headers=auth_headers)).json()["data"]
+    by_id = {x["id"]: x for x in q}
+    # A has a localized article → preview populated.
+    a = by_id[audit_data["A"]]
+    assert a["title_darija"] and a["content_darija"]
+    assert a["title_fr"] and a["content_fr"]
+    assert a["image_url"] == "https://img.example/hero.jpg"
+    assert a["is_published"] is True
+    assert a["article_id"] is not None
+    assert a["original_url"]  # external_url
+    # B has no localized article → preview fields null (graceful).
+    b = by_id[audit_data["B"]]
+    assert b["title_darija"] is None
+    assert b["article_id"] is None
 
 
 # --- POST create / snapshot / no raw mutation ---
