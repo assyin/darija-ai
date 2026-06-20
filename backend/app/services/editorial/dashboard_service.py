@@ -148,8 +148,8 @@ _ARTICLES_SQL = text(
       AND (:source   IS NULL OR source = :source)
       AND (:category IS NULL OR category = :category)
       AND score BETWEEN :score_min AND :score_max
-      AND (:date_from IS NULL OR computed_at::timestamptz >= :date_from::timestamptz)
-      AND (:date_to   IS NULL OR computed_at::timestamptz <  :date_to::timestamptz)
+      AND (:date_from IS NULL OR computed_at::timestamptz >= CAST(:date_from AS timestamptz))
+      AND (:date_to   IS NULL OR computed_at::timestamptz <  CAST(:date_to AS timestamptz))
       AND (:cur_score IS NULL OR (score, id) < (:cur_score, :cur_id))
     ORDER BY score DESC, id DESC
     LIMIT :limit
