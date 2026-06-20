@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { DollarSign, FileText, LogOut, Rss, Settings } from "lucide-react";
+import { BarChart3, DollarSign, FileText, LogOut, Rss, Settings } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/admin/articles", label: "Articles", icon: FileText },
   { href: "/admin/sources", label: "Sources", icon: Rss },
   { href: "/admin/costs", label: "Coûts IA", icon: DollarSign },
+  { href: "/admin/ere", label: "ERE", icon: BarChart3 },
   { href: "/admin/settings", label: "Paramètres", icon: Settings },
 ] as const;
 
