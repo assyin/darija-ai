@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RtlContent } from "@/components/shared/rtl-content";
+import { EreAuditActions } from "@/components/admin/ere-audit-actions";
 import { adminApi } from "@/lib/api-client";
 import { stripBdi } from "@/lib/bidi";
 
@@ -462,6 +463,16 @@ export default function EreDashboard(): React.ReactElement {
                       </a>
                     ) : null}
                   </div>
+
+                  {/* Article actions (copy / proofread / inline edit / publish).
+                      Reuses /admin/articles endpoints; publish stays manual and
+                      decoupled from the KEEP/REJECT audit verdict on the right. */}
+                  {currentAudit.article_id !== null ? (
+                    <EreAuditActions
+                      key={currentAudit.article_id}
+                      articleId={currentAudit.article_id}
+                    />
+                  ) : null}
                 </CardContent>
               </Card>
             </div>
