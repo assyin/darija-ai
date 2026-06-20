@@ -7,7 +7,9 @@ import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RtlContent } from "@/components/shared/rtl-content";
 import { adminApi } from "@/lib/api-client";
+import { stripBdi } from "@/lib/bidi";
 
 // --- Types (mirror backend app/schemas/ere_dashboard.py) ---
 interface Overview {
@@ -355,7 +357,7 @@ export default function EreDashboard(): React.ReactElement {
                           : "text-slate-600 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="font-semibold">{it.score}</span> · {it.title}
+                      <span className="font-semibold">{it.score}</span> · {stripBdi(it.title)}
                     </button>
                   ))}
                 </div>
@@ -396,34 +398,36 @@ export default function EreDashboard(): React.ReactElement {
 
                   {tab === "darija" ? (
                     <div dir="rtl" className="space-y-2">
-                      <h3 className="font-bold text-slate-900">{currentAudit.title_darija ?? "—"}</h3>
+                      <h3 className="font-bold text-slate-900">
+                        {currentAudit.title_darija ? stripBdi(currentAudit.title_darija) : "—"}
+                      </h3>
                       {currentAudit.excerpt ? (
-                        <p className="text-sm text-slate-500">{currentAudit.excerpt}</p>
+                        <p className="text-sm text-slate-500">{stripBdi(currentAudit.excerpt)}</p>
                       ) : null}
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                        {currentAudit.content_darija
-                          ? currentAudit.content_darija.slice(0, 1200) +
-                            (currentAudit.content_darija.length > 1200 ? "…" : "")
-                          : "No Darija content available yet."}
-                      </p>
+                      {currentAudit.content_darija ? (
+                        <RtlContent markdown={currentAudit.content_darija} dir="rtl" />
+                      ) : (
+                        <p className="text-sm text-slate-500">No Darija content available yet.</p>
+                      )}
                     </div>
                   ) : null}
 
                   {tab === "fr" ? (
                     <div className="space-y-2">
-                      <h3 className="font-bold text-slate-900">{currentAudit.title_fr ?? "—"}</h3>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                        {currentAudit.content_fr
-                          ? currentAudit.content_fr.slice(0, 1200) +
-                            (currentAudit.content_fr.length > 1200 ? "…" : "")
-                          : "No French content available yet."}
-                      </p>
+                      <h3 className="font-bold text-slate-900">
+                        {currentAudit.title_fr ? stripBdi(currentAudit.title_fr) : "—"}
+                      </h3>
+                      {currentAudit.content_fr ? (
+                        <RtlContent markdown={currentAudit.content_fr} dir="ltr" />
+                      ) : (
+                        <p className="text-sm text-slate-500">No French content available yet.</p>
+                      )}
                     </div>
                   ) : null}
 
                   {tab === "original" ? (
                     <div className="space-y-1 text-sm text-slate-700">
-                      <h3 className="font-bold text-slate-900">{currentAudit.title}</h3>
+                      <h3 className="font-bold text-slate-900">{stripBdi(currentAudit.title)}</h3>
                       <div>Source: {currentAudit.source}</div>
                       <div>
                         Status:{" "}

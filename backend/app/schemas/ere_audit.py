@@ -18,8 +18,8 @@ class AuditQueueItem(BaseModel):
     original_url: str | None = None
     image_url: str | None = None
     excerpt: str | None = None
-    content_darija: str | None = None  # truncated preview
-    content_fr: str | None = None  # truncated preview
+    content_darija: str | None = None  # full localized content (markdown)
+    content_fr: str | None = None  # full localized content (markdown)
     is_published: bool | None = None
     article_id: int | None = None  # articles.id, for the admin "open full article" link
     score: int
