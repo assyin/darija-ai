@@ -7,11 +7,11 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, nullslast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -22,8 +22,10 @@ from app.core.logging import get_logger
 from app.core.security import require_admin
 from app.models.article import Article
 from app.models.raw_article import RawArticle
+from app.models.source import Source
 from app.schemas.article import (
     AdminArticlesListResponse,
+    ArticleAdmin,
     ArticleAdminDetail,
     ArticlePublic,
     ArticlePublicDetail,
@@ -183,6 +185,8 @@ admin_router = APIRouter(prefix="/admin/articles", tags=["admin", "articles"])
 @admin_router.get("", response_model=AdminArticlesListResponse)
 async def list_articles_admin(
     is_published: bool | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    sort: Literal["recent", "score", "status"] = Query(default="recent"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
@@ -190,25 +194,61 @@ async def list_articles_admin(
 ) -> dict[str, Any]:
     """List articles for the admin panel + global counts for the filter badges.
 
-    The `items` array honours `is_published`, `limit`, `offset` so the UI list
-    stays paginated. The `counts` block is computed against the whole live
-    catalogue (deleted_at IS NULL) and ignores both the pagination AND the
-    `is_published` filter — the four filter tabs must always show their true
-    totals, even when the currently selected slice is all drafts or all
-    published.
+    The `items` array honours `is_published`, the optional `q` search (title or
+    source, case-insensitive), `sort`, `limit`, `offset` so the UI list stays
+    paginated. Each item carries its ERE `editorial_score` (joined from the
+    linked raw_article — read-only context, never written here).
+
+    The `counts` block is computed against the whole live catalogue
+    (deleted_at IS NULL) and ignores the pagination AND the `is_published` /
+    `q` filters — the four filter tabs must always show their true totals,
+    even when the currently selected slice is all drafts or all published.
 
     The counts query is a single FILTER aggregate scan on the existing
     `idx_articles_is_published_published_at` index — measured at ~3 ms on the
     current ~200-row table; comfortably under the per-request budget even at
     10x the catalogue size.
     """
-    # Items: respects filter + pagination, same SELECT as before.
-    items_stmt = select(Article).where(Article.deleted_at.is_(None))
+    # Items: respects filter + search + sort + pagination. Inner-join the raw
+    # article (every Article has one) to surface the ERE editorial_score.
+    items_stmt = (
+        select(Article, RawArticle.editorial_score)
+        .join(RawArticle, col(Article.raw_article_id) == col(RawArticle.id))
+        .where(Article.deleted_at.is_(None))
+    )
     if is_published is not None:
         items_stmt = items_stmt.where(Article.is_published.is_(is_published))
-    items_stmt = items_stmt.order_by(Article.created_at.desc()).limit(limit).offset(offset)
-    items_result = await session.execute(items_stmt)
-    items = list(items_result.scalars().all())
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        items_stmt = items_stmt.join(Source, col(RawArticle.source_id) == col(Source.id)).where(
+            or_(
+                col(Article.title_darija).ilike(like),
+                col(RawArticle.original_title).ilike(like),
+                col(Source.name).ilike(like),
+            )
+        )
+    if sort == "score":
+        # Highest ERE score first; unscored (NULL) sink to the bottom.
+        items_stmt = items_stmt.order_by(
+            nullslast(col(RawArticle.editorial_score).desc()),
+            Article.created_at.desc(),
+        )
+    elif sort == "status":
+        # Drafts first (they still need an editorial decision), newest within.
+        items_stmt = items_stmt.order_by(
+            col(Article.is_published).asc(),
+            Article.created_at.desc(),
+        )
+    else:  # "recent"
+        items_stmt = items_stmt.order_by(Article.created_at.desc())
+    items_stmt = items_stmt.limit(limit).offset(offset)
+
+    rows = (await session.execute(items_stmt)).all()
+    items: list[ArticleAdmin] = []
+    for article, score in rows:
+        item = ArticleAdmin.model_validate(article)
+        item.editorial_score = score
+        items.append(item)
 
     # Counts: ignores pagination AND the is_published filter — the four
     # category totals must always reflect the full live catalogue.

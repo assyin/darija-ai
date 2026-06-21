@@ -60,6 +60,8 @@ export interface ArticleAdmin {
   proofread_score_fr: number | null;
   proofread_at: string | null;
   proofread_ready_to_publish: boolean;
+  /** ERE editorial score from the linked raw article (read-only context). */
+  editorial_score: number | null;
 }
 
 export interface AdminArticlesCounts {
