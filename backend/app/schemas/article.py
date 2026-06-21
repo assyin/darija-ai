@@ -36,6 +36,9 @@ class ArticleAdmin(BaseModel):
     proofread_score_fr: int | None = None
     proofread_at: datetime | None = None
     proofread_ready_to_publish: bool = False
+    # ERE editorial score (from the linked raw_article). Populated by the admin
+    # list endpoint via a join; read-only context, never written from here.
+    editorial_score: int | None = None
 
 
 class ArticleAdminDetail(ArticleAdmin):

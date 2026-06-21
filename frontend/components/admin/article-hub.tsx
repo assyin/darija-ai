@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 
 import { EreAuditActions } from "@/components/admin/ere-audit-actions";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -16,6 +16,7 @@ import type { AdminArticlesListResponse } from "@/lib/types";
 // reused EreAuditActions panel. No ranking / ERE state is touched.
 
 type Filter = "all" | "drafts" | "ready" | "published";
+type Sort = "recent" | "score" | "status";
 
 const CHIPS: { id: Filter; label: string }[] = [
   { id: "all", label: "Tous" },
@@ -24,18 +25,34 @@ const CHIPS: { id: Filter; label: string }[] = [
   { id: "published", label: "Publiés" },
 ];
 
+const SORTS: { id: Sort; label: string }[] = [
+  { id: "recent", label: "Récent" },
+  { id: "score", label: "Score ERE" },
+  { id: "status", label: "Statut" },
+];
+
 export function ArticleHub(): React.ReactElement {
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [sort, setSort] = React.useState<Sort>("recent");
+  const [search, setSearch] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<number | null>(null);
 
+  // Debounce the search box so we don't hit the API on every keystroke.
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-articles-hub", filter],
+    queryKey: ["admin-articles-hub", filter, sort, debouncedSearch],
     queryFn: () => {
-      const params = new URLSearchParams({ limit: "100" });
+      const params = new URLSearchParams({ limit: "100", sort });
       // Backend filters on is_published only; "ready" is is_published=false +
       // a client-side flag filter below.
       if (filter === "drafts" || filter === "ready") params.set("is_published", "false");
       if (filter === "published") params.set("is_published", "true");
+      if (debouncedSearch) params.set("q", debouncedSearch);
       return adminApi.get<AdminArticlesListResponse>(`/articles?${params.toString()}`);
     },
   });
@@ -77,6 +94,32 @@ export function ArticleHub(): React.ReactElement {
         })}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher titre / source…"
+            className="w-full rounded-md border border-slate-300 py-1.5 ps-8 pe-2 text-sm"
+          />
+        </div>
+        <label className="flex items-center gap-1 text-xs text-slate-500">
+          Tri
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
+          >
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-12">
         {/* Left: article list */}
         <div className="lg:col-span-4">
@@ -112,6 +155,18 @@ export function ArticleHub(): React.ReactElement {
                     >
                       {stripBdi(a.title_darija)}
                     </span>
+                    {a.editorial_score !== null ? (
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          a.editorial_score >= 55
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                        title="Score ERE"
+                      >
+                        {a.editorial_score}
+                      </span>
+                    ) : null}
                     <StatusBadge isPublished={a.is_published} />
                   </button>
                 );
