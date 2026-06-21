@@ -90,9 +90,7 @@ async def test_admin_publish_then_unpublish_cycle(
         assert unpub.json()["is_published"] is False
     finally:
         if original.get("is_published"):
-            await client.post(
-                f"/api/v1/admin/articles/{article_id}/publish", headers=auth_headers
-            )
+            await client.post(f"/api/v1/admin/articles/{article_id}/publish", headers=auth_headers)
 
 
 async def test_admin_patch_recomputes_word_count(
@@ -190,9 +188,7 @@ async def test_admin_list_includes_editorial_score(
     client: AsyncClient, hub_data: dict[str, object], auth_headers: dict[str, str]
 ) -> None:
     token = hub_data["token"]
-    resp = await client.get(
-        f"/api/v1/admin/articles?q={token}&limit=200", headers=auth_headers
-    )
+    resp = await client.get(f"/api/v1/admin/articles?q={token}&limit=200", headers=auth_headers)
     assert resp.status_code == 200
     by_slug = {it["slug"]: it for it in resp.json()["items"]}
     assert by_slug[f"hub-{token}-hi"]["editorial_score"] == 80
@@ -203,9 +199,7 @@ async def test_admin_list_search_by_title(
     client: AsyncClient, hub_data: dict[str, object], auth_headers: dict[str, str]
 ) -> None:
     # Search by original_title — only the HI row matches "Anthropic".
-    resp = await client.get(
-        "/api/v1/admin/articles?q=Anthropic&limit=200", headers=auth_headers
-    )
+    resp = await client.get("/api/v1/admin/articles?q=Anthropic&limit=200", headers=auth_headers)
     assert resp.status_code == 200
     slugs = {it["slug"] for it in resp.json()["items"]}
     token = hub_data["token"]

@@ -220,9 +220,7 @@ async def list_articles_admin(
         items_stmt = items_stmt.where(Article.is_published.is_(is_published))
     if q and q.strip():
         like = f"%{q.strip()}%"
-        items_stmt = items_stmt.join(
-            Source, col(RawArticle.source_id) == col(Source.id)
-        ).where(
+        items_stmt = items_stmt.join(Source, col(RawArticle.source_id) == col(Source.id)).where(
             or_(
                 col(Article.title_darija).ilike(like),
                 col(RawArticle.original_title).ilike(like),
