@@ -73,6 +73,8 @@ export interface AdminArticlesCounts {
   ready: number;
   /** Articles with is_published = true. */
   published: number;
+  /** Soft-deleted articles (deleted_at IS NOT NULL). */
+  archived: number;
 }
 
 export interface AdminArticlesListResponse {

@@ -1,21 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RotateCcw, Search } from "lucide-react";
 
 import { EreAuditActions } from "@/components/admin/ere-audit-actions";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/api-client";
 import { stripBdi } from "@/lib/bidi";
-import type { AdminArticlesListResponse } from "@/lib/types";
+import type { AdminArticlesListResponse, ArticleAdminDetail } from "@/lib/types";
 
-// Catalogue mode of the editorial hub: browse EVERY article (draft + published)
-// and act on any of them — articles no longer "disappear" once audited/published.
-// Read endpoints only here (GET /admin/articles); all writes go through the
-// reused EreAuditActions panel. No ranking / ERE state is touched.
+// Catalogue mode of the editorial hub: browse EVERY article (draft + published
+// + archived) and act on any of them — articles no longer "disappear" once
+// audited/published. Read endpoints only here (GET /admin/articles); all writes
+// go through the reused EreAuditActions panel (or unarchive for archived rows).
+// No ranking / ERE state is touched.
 
-type Filter = "all" | "drafts" | "ready" | "published";
+type Filter = "all" | "drafts" | "ready" | "published" | "archived";
 type Sort = "recent" | "score" | "status";
 
 const CHIPS: { id: Filter; label: string }[] = [
@@ -23,6 +26,7 @@ const CHIPS: { id: Filter; label: string }[] = [
   { id: "drafts", label: "Brouillons" },
   { id: "ready", label: "Prêts" },
   { id: "published", label: "Publiés" },
+  { id: "archived", label: "Archivés" },
 ];
 
 const SORTS: { id: Sort; label: string }[] = [
@@ -32,11 +36,19 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 export function ArticleHub(): React.ReactElement {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [sort, setSort] = React.useState<Sort>("recent");
   const [search, setSearch] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<number | null>(null);
+
+  // Switching tabs may hide the current selection (e.g. live → archived).
+  const selectFilter = (f: Filter) => {
+    setFilter(f);
+    setSelectedId(null);
+  };
 
   // Debounce the search box so we don't hit the API on every keystroke.
   React.useEffect(() => {
@@ -52,9 +64,23 @@ export function ArticleHub(): React.ReactElement {
       // a client-side flag filter below.
       if (filter === "drafts" || filter === "ready") params.set("is_published", "false");
       if (filter === "published") params.set("is_published", "true");
+      if (filter === "archived") params.set("archived", "true");
       if (debouncedSearch) params.set("q", debouncedSearch);
       return adminApi.get<AdminArticlesListResponse>(`/articles?${params.toString()}`);
     },
+  });
+
+  const unarchive = useMutation({
+    mutationFn: (id: number) =>
+      adminApi.post<ArticleAdminDetail>(`/articles/${id}/unarchive`),
+    onSuccess: () => {
+      setSelectedId(null);
+      void qc.invalidateQueries({ queryKey: ["admin-articles-hub"] });
+      void qc.invalidateQueries({ queryKey: ["articles"] });
+      toast("Article restauré (brouillon)", "success");
+    },
+    onError: (e) =>
+      toast(`Erreur: ${e instanceof Error ? e.message : "échec"}`, "error"),
   });
 
   const counts = data?.counts;
@@ -63,12 +89,15 @@ export function ArticleHub(): React.ReactElement {
     return filter === "ready" ? all.filter((a) => a.proofread_ready_to_publish) : all;
   }, [data, filter]);
 
+  const selectedItem = items.find((a) => a.id === selectedId) ?? null;
+
   const countFor = (f: Filter): number | null => {
     if (!counts) return null;
     if (f === "all") return counts.all;
     if (f === "drafts") return counts.drafts;
     if (f === "ready") return counts.ready;
-    return counts.published;
+    if (f === "published") return counts.published;
+    return counts.archived;
   };
 
   return (
@@ -80,7 +109,7 @@ export function ArticleHub(): React.ReactElement {
           return (
             <button
               key={c.id}
-              onClick={() => setFilter(c.id)}
+              onClick={() => selectFilter(c.id)}
               className={`rounded-full px-3 py-1 text-xs font-medium ${
                 active
                   ? "bg-indigo-600 text-white"
@@ -167,7 +196,9 @@ export function ArticleHub(): React.ReactElement {
                         {a.editorial_score}
                       </span>
                     ) : null}
-                    <StatusBadge isPublished={a.is_published} />
+                    {filter !== "archived" ? (
+                      <StatusBadge isPublished={a.is_published} />
+                    ) : null}
                   </button>
                 );
               })
@@ -181,8 +212,31 @@ export function ArticleHub(): React.ReactElement {
             <div className="flex h-full min-h-[12rem] items-center justify-center rounded-md border border-dashed border-slate-200 text-sm text-slate-400">
               Sélectionnez un article pour le gérer.
             </div>
+          ) : filter === "archived" ? (
+            <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-600">
+                Article archivé :{" "}
+                <span dir="rtl" className="font-medium">
+                  {stripBdi(selectedItem?.title_darija ?? "")}
+                </span>
+              </p>
+              <Button
+                variant="outline"
+                className="h-8 px-2.5 text-xs"
+                disabled={unarchive.isPending}
+                onClick={() => unarchive.mutate(selectedId)}
+              >
+                <RotateCcw className="me-1 h-3.5 w-3.5" />
+                Restaurer (brouillon)
+              </Button>
+            </div>
           ) : (
-            <EreAuditActions key={selectedId} articleId={selectedId} variant="catalogue" />
+            <EreAuditActions
+              key={selectedId}
+              articleId={selectedId}
+              variant="catalogue"
+              onArchived={() => setSelectedId(null)}
+            />
           )}
         </div>
       </div>

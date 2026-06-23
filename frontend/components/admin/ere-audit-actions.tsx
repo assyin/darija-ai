@@ -29,8 +29,9 @@ interface ProofreadScore {
   summary: string;
 }
 
-// Paid AI calls (Flux / Claude) get a two-click confirm; "publish" too.
-type Confirm = null | "publish" | "image" | "fr";
+// Paid AI calls (Flux / Claude) get a two-click confirm; "publish" + the
+// destructive "archive" too.
+type Confirm = null | "publish" | "image" | "fr" | "content" | "archive";
 
 const BTN = "h-8 px-2.5 text-xs";
 
@@ -41,9 +42,12 @@ function errMsg(e: unknown): string {
 export function EreAuditActions({
   articleId,
   variant = "audit",
+  onArchived,
 }: {
   articleId: number;
   variant?: "audit" | "catalogue";
+  /** Called after a successful archive so the parent can deselect. */
+  onArchived?: () => void;
 }): React.ReactElement {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -127,6 +131,33 @@ export function EreAuditActions({
       onArticle(next);
       setConfirm(null);
       toast("Français régénéré", "success");
+    },
+    onError: (e) => {
+      setConfirm(null);
+      toast(`Erreur: ${errMsg(e)}`, "error");
+    },
+  });
+  const regenContent = useMutation({
+    mutationFn: () =>
+      adminApi.post<ArticleAdminDetail>(`/articles/${articleId}/regenerate-content`),
+    onSuccess: (next) => {
+      onArticle(next);
+      setConfirm(null);
+      toast("Contenu Darija régénéré — repassé en brouillon", "success");
+    },
+    onError: (e) => {
+      setConfirm(null);
+      toast(`Erreur: ${errMsg(e)}`, "error");
+    },
+  });
+  const archive = useMutation({
+    mutationFn: () => adminApi.post<ArticleAdminDetail>(`/articles/${articleId}/archive`),
+    onSuccess: () => {
+      setConfirm(null);
+      void qc.invalidateQueries({ queryKey: ["articles"] });
+      void qc.invalidateQueries({ queryKey: ["admin-articles-hub"] });
+      toast("Article archivé", "success");
+      onArchived?.();
     },
     onError: (e) => {
       setConfirm(null);
@@ -222,6 +253,34 @@ export function EreAuditActions({
         >
           {editing ? "Annuler" : "Corriger"}
         </Button>
+        {variant === "catalogue"
+          ? paidButton(
+              "content",
+              "Régénérer Darija",
+              regenContent.isPending,
+              () => regenContent.mutate(),
+            )
+          : null}
+        {variant === "catalogue" ? (
+          confirm === "archive" ? (
+            <Button
+              variant="destructive"
+              className={BTN}
+              disabled={archive.isPending}
+              onClick={() => archive.mutate()}
+            >
+              Archiver ? (confirmer)
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              className={`${BTN} border-red-200 text-red-600 hover:bg-red-50`}
+              onClick={() => setConfirm("archive")}
+            >
+              Archiver
+            </Button>
+          )
+        ) : null}
         {article.is_published ? (
           <>
             <a
