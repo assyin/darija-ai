@@ -187,6 +187,7 @@ async def list_articles_admin(
     is_published: bool | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
     sort: Literal["recent", "score", "status"] = Query(default="recent"),
+    archived: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
@@ -211,10 +212,11 @@ async def list_articles_admin(
     """
     # Items: respects filter + search + sort + pagination. Inner-join the raw
     # article (every Article has one) to surface the ERE editorial_score.
+    deleted_filter = Article.deleted_at.is_not(None) if archived else Article.deleted_at.is_(None)
     items_stmt = (
         select(Article, RawArticle.editorial_score)
         .join(RawArticle, col(Article.raw_article_id) == col(RawArticle.id))
-        .where(Article.deleted_at.is_(None))
+        .where(deleted_filter)
     )
     if is_published is not None:
         items_stmt = items_stmt.where(Article.is_published.is_(is_published))
@@ -250,19 +252,23 @@ async def list_articles_admin(
         item.editorial_score = score
         items.append(item)
 
-    # Counts: ignores pagination AND the is_published filter — the four
-    # category totals must always reflect the full live catalogue.
+    # Counts: ignore pagination AND the is_published / archived / q filters —
+    # the tabs must always show their true totals. Live buckets are gated on
+    # deleted_at IS NULL; `archived` counts the soft-deleted rows.
+    live = col(Article.deleted_at).is_(None)
     counts_stmt = select(
-        func.count().label("all"),
-        func.count().filter(col(Article.is_published).is_(False)).label("drafts"),
+        func.count().filter(live).label("all"),
+        func.count().filter(live, col(Article.is_published).is_(False)).label("drafts"),
         func.count()
         .filter(
+            live,
             col(Article.is_published).is_(False),
             col(Article.proofread_ready_to_publish).is_(True),
         )
         .label("ready"),
-        func.count().filter(col(Article.is_published).is_(True)).label("published"),
-    ).where(Article.deleted_at.is_(None))
+        func.count().filter(live, col(Article.is_published).is_(True)).label("published"),
+        func.count().filter(col(Article.deleted_at).is_not(None)).label("archived"),
+    )
     counts_row = (await session.execute(counts_stmt)).one()
 
     return {
@@ -272,6 +278,7 @@ async def list_articles_admin(
             "drafts": int(counts_row.drafts),
             "ready": int(counts_row.ready),
             "published": int(counts_row.published),
+            "archived": int(counts_row.archived),
         },
     }
 
@@ -628,6 +635,66 @@ async def unpublish_article(
     return article
 
 
+@admin_router.post("/{article_id}/archive", response_model=ArticleAdminDetail)
+async def archive_article(
+    article_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> Article:
+    """Soft-delete an article (reversible). Sets ``deleted_at`` and unpublishes
+    it so it leaves both the public site and the live catalogue. The Darija
+    content is preserved — restore with ``/unarchive``.
+    """
+    article = await session.get(Article, article_id)
+    if article is None or article.deleted_at is not None:
+        raise NotFoundError(
+            f"Article {article_id} not found",
+            details={"article_id": article_id},
+        )
+    now = datetime.now(UTC)
+    article.deleted_at = now
+    article.is_published = False  # remove from the public site
+    article.updated_at = now
+    await session.commit()
+    await session.refresh(article)
+    logger.info(
+        "admin.article.archived",
+        article_id=article.id,
+        slug=article.slug,
+        admin_email=user.email,
+    )
+    return article
+
+
+@admin_router.post("/{article_id}/unarchive", response_model=ArticleAdminDetail)
+async def unarchive_article(
+    article_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> Article:
+    """Restore a soft-deleted article. Clears ``deleted_at``; the article comes
+    back as a draft (stays unpublished) so it goes through review before going
+    live again.
+    """
+    article = await session.get(Article, article_id)
+    if article is None or article.deleted_at is None:
+        raise NotFoundError(
+            f"Archived article {article_id} not found",
+            details={"article_id": article_id},
+        )
+    article.deleted_at = None
+    article.updated_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(article)
+    logger.info(
+        "admin.article.unarchived",
+        article_id=article.id,
+        slug=article.slug,
+        admin_email=user.email,
+    )
+    return article
+
+
 @admin_router.post("/{article_id}/proofread", response_model=ProofreadResult)
 async def proofread_article_field(
     article_id: int,
@@ -787,6 +854,88 @@ async def translate_article_to_french(
         cached=result.cached,
         duration_ms=result.duration_ms,
         content_chars=len(result.content_fr),
+        admin_email=user.email,
+    )
+    return article
+
+
+@admin_router.post("/{article_id}/regenerate-content", response_model=ArticleAdminDetail)
+async def regenerate_article_content(
+    article_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
+) -> Article:
+    """Re-run the Localizer on the original source and replace the Darija fields.
+
+    Owner-triggered only (CLAUDE.md §1: Darija is sacred — the owner validates;
+    nothing here auto-edits silently). Because the body changes, the article is
+    forced back to draft for re-review: ``is_published`` flips to False and the
+    Darija proofread flags are cleared. The slug, categories and tags are
+    preserved (URL stability + curated taxonomy). Backed by Claude Haiku 4.5
+    with the current localizer prompt; cached in Redis so retries are free.
+    """
+    article = await session.get(Article, article_id)
+    if article is None or article.deleted_at is not None:
+        raise NotFoundError(
+            f"Article {article_id} not found",
+            details={"article_id": article_id},
+        )
+    if article.raw_article_id is None:
+        raise ExternalServiceError(
+            "Cannot regenerate content: the article has no source raw_article",
+            details={"article_id": article_id},
+        )
+
+    settings = get_settings()
+    async with _redis_for(settings) as redis_client:
+        async with _session_for_raw() as raw_session:
+            raw = await raw_session.get(RawArticle, article.raw_article_id)
+            if raw is None:
+                raise ExternalServiceError(
+                    "Cannot regenerate content: the source raw_article is gone",
+                    details={"article_id": article_id},
+                )
+            raw_title = raw.original_title
+            raw_content = raw.original_content
+            raw_id = raw.id
+        # Wrap so the manual regen lands in ai_logs (budget discipline).
+        provider = LoggingLLMProvider(ClaudeClient(settings.anthropic_api_key))
+        localizer = Localizer(
+            provider=provider,
+            redis_client=redis_client,
+            prompt_version=settings.localizer_prompt_version,
+        )
+        localized = await localizer.localize(
+            title=raw_title,
+            content=raw_content,
+            source_name="regen",
+            raw_article_id=raw_id or 0,
+        )
+
+    was_published = article.is_published
+    article.title_darija = localized.title_darija
+    article.excerpt_darija = localized.excerpt_darija
+    article.content_darija = localized.content_darija
+    article.meta_title = localized.meta_title
+    article.meta_description = localized.meta_description
+    article.word_count = localized.word_count
+    article.reading_time_minutes = localized.reading_time_minutes
+    # Content changed → invalidate the Darija proofread state and force a re-review.
+    article.proofread_ready_to_publish = False
+    article.proofread_score_darija = None
+    article.proofread_at = None
+    article.is_published = False
+    article.updated_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(article)
+
+    logger.info(
+        "admin.article.content_regenerated",
+        article_id=article.id,
+        slug=article.slug,
+        prompt_version=settings.localizer_prompt_version,
+        was_published=was_published,
+        content_chars=len(article.content_darija),
         admin_email=user.email,
     )
     return article

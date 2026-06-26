@@ -85,6 +85,7 @@ export default function ArticlesListPage() {
         drafts: 0,
         ready: 0,
         published: 0,
+        archived: 0,
       },
     [data],
   );

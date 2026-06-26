@@ -115,6 +115,7 @@ class AdminArticlesCounts(BaseModel):
     drafts: int = Field(description="Articles with is_published = False.")
     ready: int = Field(description="Drafts the Proofreader flagged ready to publish.")
     published: int = Field(description="Articles with is_published = True.")
+    archived: int = Field(default=0, description="Soft-deleted (deleted_at IS NOT NULL).")
 
 
 class AdminArticlesListResponse(BaseModel):
