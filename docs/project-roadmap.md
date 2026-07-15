@@ -245,3 +245,15 @@ Plan de contenu hebdomadaire.
 Lancement LinkedIn + groupes tech marocains.
 
 Résultat attendu : DarijaAI live officiellement.
+
+---
+
+## Backlog opérationnel — Améliorations futures (non planifiées)
+
+> Items identifiés, à prioriser ultérieurement. Pas de chantier ouvert.
+
+- **Détection automatique `insufficient_quota` OpenAI + alerte proactive.**
+  Sur le modèle de la détection billing Claude (`billing_error_detected` + Sentry + SpendGuard).
+  Aujourd'hui l'épuisement OpenAI (Proofreader) n'émet qu'un log discret `proofreader.openai_failed`,
+  sans alerte. Découvert via l'incident 2026-06-17 (cf. `docs/rca/2026-06-17-openai-quota-exhausted.md`),
+  impact nul à ce jour mais lacune réelle de monitoring. *(Origine : RCA 2026-06-17.)*
