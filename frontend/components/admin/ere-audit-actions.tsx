@@ -34,9 +34,52 @@ interface ProofreadScore {
 type Confirm = null | "publish" | "image" | "fr" | "content" | "archive";
 
 const BTN = "h-8 px-2.5 text-xs";
+const INPUT = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "échec";
+}
+
+// Split a comma-separated categories/tags input into a clean list. Accepts both
+// the Latin "," and the Arabic "،" separator (the field is RTL Darija). An empty
+// field yields [] — a legitimate "clear all" the backend accepts.
+function parseList(raw: string): string[] {
+  return raw
+    .split(/[,،]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function FieldGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <fieldset className="space-y-2 rounded border border-slate-200 bg-white p-2.5">
+      <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+        {title}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <label className="block">
+      <span className="mb-0.5 block text-[11px] font-medium text-slate-500">{label}</span>
+      {children}
+    </label>
+  );
 }
 
 export function EreAuditActions({
@@ -365,33 +408,143 @@ export function EreAuditActions({
       ) : null}
 
       {editing ? (
-        <div className="space-y-2">
-          <input
-            dir="rtl"
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            defaultValue={article.title_darija}
-            onChange={(e) => setDraft((d) => ({ ...d, title_darija: e.target.value }))}
-          />
-          <textarea
-            dir="rtl"
-            rows={8}
-            className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
-            defaultValue={article.content_darija}
-            onChange={(e) => setDraft((d) => ({ ...d, content_darija: e.target.value }))}
-          />
-          <input
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            placeholder="Titre FR"
-            defaultValue={article.title_fr ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, title_fr: e.target.value }))}
-          />
-          <textarea
-            rows={8}
-            placeholder="Contenu FR"
-            className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
-            defaultValue={article.content_fr ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, content_fr: e.target.value }))}
-          />
+        <div className="space-y-3">
+          <FieldGroup title="Darija">
+            <Field label="Titre">
+              <input
+                dir="rtl"
+                className={INPUT}
+                defaultValue={article.title_darija}
+                onChange={(e) => setDraft((d) => ({ ...d, title_darija: e.target.value }))}
+              />
+            </Field>
+            <Field label="Extrait">
+              <textarea
+                dir="rtl"
+                rows={2}
+                className={INPUT}
+                defaultValue={article.excerpt_darija}
+                onChange={(e) => setDraft((d) => ({ ...d, excerpt_darija: e.target.value }))}
+              />
+            </Field>
+            <Field label="Contenu">
+              <textarea
+                dir="rtl"
+                rows={8}
+                className={`${INPUT} font-mono text-xs`}
+                defaultValue={article.content_darija}
+                onChange={(e) => setDraft((d) => ({ ...d, content_darija: e.target.value }))}
+              />
+            </Field>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Meta title (SEO)">
+                <input
+                  dir="rtl"
+                  className={INPUT}
+                  defaultValue={article.meta_title ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d, meta_title: e.target.value }))}
+                />
+              </Field>
+              <Field label="Meta description (SEO)">
+                <input
+                  dir="rtl"
+                  className={INPUT}
+                  defaultValue={article.meta_description ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d, meta_description: e.target.value }))}
+                />
+              </Field>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup title="Français">
+            <Field label="Titre">
+              <input
+                className={INPUT}
+                defaultValue={article.title_fr ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, title_fr: e.target.value }))}
+              />
+            </Field>
+            <Field label="Extrait">
+              <textarea
+                rows={2}
+                className={INPUT}
+                defaultValue={article.excerpt_fr ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, excerpt_fr: e.target.value }))}
+              />
+            </Field>
+            <Field label="Contenu">
+              <textarea
+                rows={8}
+                className={`${INPUT} font-mono text-xs`}
+                defaultValue={article.content_fr ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, content_fr: e.target.value }))}
+              />
+            </Field>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Meta title (SEO)">
+                <input
+                  className={INPUT}
+                  defaultValue={article.meta_title_fr ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d, meta_title_fr: e.target.value }))}
+                />
+              </Field>
+              <Field label="Meta description (SEO)">
+                <input
+                  className={INPUT}
+                  defaultValue={article.meta_description_fr ?? ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, meta_description_fr: e.target.value }))
+                  }
+                />
+              </Field>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup title="Métadonnées & classement">
+            <Field label="Slug (URL)">
+              <input
+                dir="ltr"
+                className={`${INPUT} font-mono text-xs`}
+                defaultValue={article.slug}
+                onChange={(e) => setDraft((d) => ({ ...d, slug: e.target.value.trim() }))}
+              />
+              {article.is_published ? (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  ⚠️ Cet article est publié : changer le slug casse l&apos;URL publique
+                  et les liens existants.
+                </p>
+              ) : null}
+            </Field>
+            <Field label="Texte alternatif de l'image (alt)">
+              <input
+                dir="rtl"
+                className={INPUT}
+                defaultValue={article.hero_image_alt ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, hero_image_alt: e.target.value }))}
+              />
+            </Field>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Catégories (séparées par des virgules)">
+                <input
+                  dir="rtl"
+                  className={INPUT}
+                  defaultValue={article.categories.join("، ")}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, categories: parseList(e.target.value) }))
+                  }
+                />
+              </Field>
+              <Field label="Tags (séparés par des virgules)">
+                <input
+                  dir="rtl"
+                  className={INPUT}
+                  defaultValue={article.tags.join("، ")}
+                  onChange={(e) => setDraft((d) => ({ ...d, tags: parseList(e.target.value) }))}
+                />
+              </Field>
+            </div>
+          </FieldGroup>
+
           <Button
             className={BTN}
             disabled={save.isPending || Object.keys(draft).length === 0}
