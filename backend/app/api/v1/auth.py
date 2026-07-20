@@ -35,15 +35,19 @@ async def login(request: Request, body: AdminLoginRequest) -> TokenResponse:
         settings.auth_login_rate_limit_max_requests,
         settings.auth_login_rate_limit_window_seconds,
     )
-    email_ok = secrets.compare_digest(body.email, settings.admin_email)
-    password_ok = secrets.compare_digest(
-        body.password,
-        settings.admin_password.get_secret_value(),
-    )
-    if not (email_ok and password_ok):
+    # Match against every configured admin (primary + ADMIN_ACCOUNTS). Iterate
+    # all pairs — no early break — so a match late in the list isn't
+    # distinguishable by timing from a miss.
+    matched_email: str | None = None
+    for email, password in settings.admin_credentials:
+        email_ok = secrets.compare_digest(body.email, email)
+        password_ok = secrets.compare_digest(body.password, password)
+        if email_ok and password_ok:
+            matched_email = email
+    if matched_email is None:
         raise UnauthorizedError("Authentication required")
 
-    token = create_access_token(settings.admin_email)
+    token = create_access_token(matched_email)
     logger.info("admin.login.success")
     return TokenResponse(
         access_token=token,
