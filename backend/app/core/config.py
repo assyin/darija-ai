@@ -50,6 +50,27 @@ SOURCE_TIERS: dict[str, str] = {
 }
 
 
+def parse_admin_accounts(raw: str) -> list[tuple[str, str]]:
+    """Parse the ``ADMIN_ACCOUNTS`` env string into (email, password) pairs.
+
+    Format: ``email1:password1,email2:password2``. Entries are comma-separated;
+    within each entry the FIRST colon splits email from password (emails never
+    contain a colon). Blank or colon-less entries are ignored. Passwords must
+    not contain a comma or a colon.
+    """
+    accounts: list[tuple[str, str]] = []
+    for raw_entry in raw.split(","):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        email, sep, password = entry.partition(":")
+        email = email.strip()
+        if not sep or not email or not password:
+            continue
+        accounts.append((email, password))
+    return accounts
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -93,6 +114,11 @@ class Settings(BaseSettings):
 
     admin_email: str = Field(default="admin@darija-ai.ma", min_length=5)
     admin_password: SecretStr = Field(default="changeme-in-prod", min_length=8)
+    # Additional admin accounts beyond the primary (admin_email/admin_password)
+    # above, so more than one person can sign in to /login. Format:
+    #   "email1:password1,email2:password2"
+    # Secrets live in the environment (Doppler / server .env), never in code.
+    admin_accounts: str = ""
     admin_jwt_secret: str = Field(default="dev-only-change-me", min_length=10)
     admin_jwt_algorithm: str = "HS256"
     # 8 h is a balance between editorial-workflow comfort (long enough that
@@ -179,6 +205,13 @@ class Settings(BaseSettings):
     @property
     def redis_url_str(self) -> str:
         return str(self.redis_url)
+
+    @property
+    def admin_credentials(self) -> list[tuple[str, str]]:
+        """All valid admin (email, password) pairs: primary + ADMIN_ACCOUNTS."""
+        creds: list[tuple[str, str]] = [(self.admin_email, self.admin_password.get_secret_value())]
+        creds.extend(parse_admin_accounts(self.admin_accounts))
+        return creds
 
 
 @lru_cache(maxsize=1)

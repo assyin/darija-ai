@@ -61,6 +61,56 @@ async def test_wrong_credentials_below_limit(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_second_admin_login_success(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A credential from ADMIN_ACCOUNTS (not the primary) can sign in."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "admin_accounts", "second-admin@example.com:secondpass123")
+    response = await client.post(
+        TOKEN_URL,
+        json={"email": "second-admin@example.com", "password": "secondpass123"},
+        headers={"X-Forwarded-For": "10.9.4.1"},
+    )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_second_admin_wrong_password_rejected(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A configured second-admin email with the wrong password is still 401."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "admin_accounts", "second-admin@example.com:secondpass123")
+    response = await client.post(
+        TOKEN_URL,
+        json={"email": "second-admin@example.com", "password": "nope"},
+        headers={"X-Forwarded-For": "10.9.4.2"},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+@pytest.mark.asyncio
+async def test_primary_admin_still_works_with_extra_accounts(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Adding ADMIN_ACCOUNTS must not break the primary admin login."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "admin_accounts", "second-admin@example.com:secondpass123")
+    response = await client.post(
+        TOKEN_URL,
+        json={
+            "email": settings.admin_email,
+            "password": settings.admin_password.get_secret_value(),
+        },
+        headers={"X-Forwarded-For": "10.9.4.3"},
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_rate_limit_exceeded_returns_429(client: AsyncClient) -> None:
     """Six requests from the same IP: first five reach auth check, sixth is blocked."""
     ip = "10.9.1.1"
