@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { BarChart3, DollarSign, FileText, LogOut, Rss, Settings } from "lucide-react";
+import {
+  BarChart3,
+  DollarSign,
+  FileText,
+  HeartPulse,
+  LogOut,
+  Rss,
+  Settings,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const NAV = [
+  { href: "/admin/health", label: "Santé", icon: HeartPulse },
   { href: "/admin/articles", label: "Articles", icon: FileText },
   { href: "/admin/sources", label: "Sources", icon: Rss },
   { href: "/admin/costs", label: "Coûts IA", icon: DollarSign },

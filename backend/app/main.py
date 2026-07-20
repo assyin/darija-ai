@@ -17,6 +17,7 @@ from app.api.v1.articles import admin_router as articles_admin_router
 from app.api.v1.articles import public_router as articles_public_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.ere import router as ere_admin_router
+from app.api.v1.health_dashboard import router as health_admin_router
 from app.api.v1.settings import admin_router as settings_admin_router
 from app.api.v1.settings import router as settings_router
 from app.core.config import Settings, get_settings
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(articles_admin_router, prefix="/api/v1")
     app.include_router(ai_logs_admin_router, prefix="/api/v1")
     app.include_router(ere_admin_router, prefix="/api/v1")
+    app.include_router(health_admin_router, prefix="/api/v1")
     app.include_router(
         articles_public_router,
         prefix="/api/v1",
