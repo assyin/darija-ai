@@ -343,3 +343,88 @@ async def test_regenerate_content_unknown_id_404(
         "/api/v1/admin/articles/99999999/regenerate-content", headers=auth_headers
     )
     assert r.status_code == 404
+
+
+# --- Bug repro: editing content_darija after proofreading doesn't invalidate
+# the proofread state (proofread_ready_to_publish / score / proofread_at all
+# survive the edit unchanged). See production incident 2026-08-16. ---
+
+
+@pytest_asyncio.fixture
+async def proofread_article() -> AsyncIterator[dict[str, int]]:
+    token = uuid.uuid4().hex[:8]
+    proofread_at = datetime(2026, 8, 16, 18, 44, tzinfo=UTC)
+    async with AsyncSessionLocal() as session:
+        src = Source(name=f"_test_pf_{token}", rss_url=f"http://t/{token}.xml")
+        session.add(src)
+        await session.commit()
+        await session.refresh(src)
+        sid = int(src.id)  # type: ignore[arg-type]
+        raw = RawArticle(
+            source_id=sid,
+            external_url=f"http://t/{token}/0",
+            url_hash=f"{token}".ljust(64, "0"),
+            original_title="Proofread bug repro",
+            original_content="content",
+            processing_status="translated",
+            published_at=_NOW,
+            fetched_at=_NOW,
+            editorial_score=60,
+            editorial_decision="selected",
+        )
+        session.add(raw)
+        await session.commit()
+        await session.refresh(raw)
+        rid = int(raw.id)  # type: ignore[arg-type]
+        art = Article(
+            raw_article_id=rid,
+            slug=f"pf-{token}",
+            title_darija="عنوان",
+            excerpt_darija="ملخص",
+            content_darija="محتوى " * 20,
+            is_published=False,
+            proofread_ready_to_publish=True,
+            proofread_score_darija=90,
+            proofread_at=proofread_at,
+        )
+        session.add(art)
+        await session.commit()
+        await session.refresh(art)
+        aid = int(art.id)  # type: ignore[arg-type]
+
+    yield {"aid": aid, "rid": rid, "sid": sid}
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(Article).where(col(Article.id) == aid))
+        await session.execute(delete(RawArticle).where(col(RawArticle.source_id) == sid))
+        await session.execute(delete(Source).where(col(Source.id) == sid))
+        await session.commit()
+
+
+async def test_patch_content_darija_invalidates_proofread_state(
+    client: AsyncClient, proofread_article: dict[str, int], auth_headers: dict[str, str]
+) -> None:
+    """Editing content_darija on an already proofread article must invalidate
+    proofread_ready_to_publish / proofread_score_darija / proofread_at, so a
+    stale "ready to publish" flag never survives a content change that was
+    never re-reviewed. Regression test for production incident 2026-08-16."""
+    aid = proofread_article["aid"]
+
+    before = (
+        await client.get(f"/api/v1/admin/articles/{aid}", headers=auth_headers)
+    ).json()
+    assert before["proofread_ready_to_publish"] is True
+    assert before["proofread_score_darija"] == 90
+    assert before["proofread_at"] is not None
+
+    resp = await client.patch(
+        f"/api/v1/admin/articles/{aid}",
+        json={"content_darija": "محتوى معدل بعد الفحص " * 20},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    after = resp.json()
+
+    assert after["proofread_ready_to_publish"] is False
+    assert after["proofread_score_darija"] is None
+    assert after["proofread_at"] is None

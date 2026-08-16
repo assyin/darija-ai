@@ -324,6 +324,13 @@ async def update_article_admin(
         wc = len(article.content_darija.split())
         article.word_count = wc
         article.reading_time_minutes = max(1, math.ceil(wc / WORDS_PER_MINUTE))
+        # Body changed → the existing Darija proofread is stale. Invalidate it
+        # so a re-review is required before the article can be flagged ready
+        # again (mirrors regenerate-content's invalidation, CLAUDE.md §1: no
+        # stale "ready to publish" state survives an unreviewed content edit).
+        article.proofread_ready_to_publish = False
+        article.proofread_score_darija = None
+        article.proofread_at = None
 
     article.updated_at = datetime.now(UTC)
     await session.commit()
